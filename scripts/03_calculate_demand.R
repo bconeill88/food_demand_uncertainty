@@ -1,8 +1,12 @@
-# calculate and save demand and elasticities for subsample and intervals -------
-# ----
+# calculate and save demand and elasticities for subsample and intervals 
 
 # To Do:
-# ADD CASE TO ARGUMENTS TO FOOD DMND CALLS
+# Code for all scenarios needs to be updated to use new food.dmnd.wrapper function
+# except Ref_ML_gcam, Ref_ML_gcam_ens, and Ref_ML_gcam_ens_bc, which are up to
+# date
+# Now need to create these same versions but for GCAM-based scenarios with higher
+# prices. I believe Kanishka created such a scenario but it did not lead to very 
+# big price changes.
 
 # load functions
 source("R/demand_functions.R")

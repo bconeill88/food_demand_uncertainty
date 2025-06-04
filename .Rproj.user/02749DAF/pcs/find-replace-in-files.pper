@@ -1,15 +1,15 @@
 {
     "dialog-state": {
-        "query": "demand_res",
+        "query": "demand_R",
         "path": "/R",
         "regex": false,
         "caseSensitive": false,
         "wholeWord": false,
         "filePatterns": [],
-        "useGitGrep": false,
+        "useGitGrep": true,
         "excludeGitIgnore": true,
         "excludeFilePatterns": [],
-        "resultsCount": 16,
+        "resultsCount": 115,
         "errorCount": 0,
         "replaceErrors": "",
         "projectRelative": true

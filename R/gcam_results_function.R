@@ -1,12 +1,11 @@
-
-# function for getting price, income, demand and bias data from a GCAM run; takes
-# as input a data file extracted from GCAM output in rgcam, along with scenario 
-# name to use when saving results file (to a directory within data/processed given by 
-# gcam_results_dir); also requires income shares by region, decile, 
-# and time step, because per cap income by decile in GCAM output is incorrect, so
-# it needs to be calculated from regional per cap income and income shares;
-# it is calculated in the function as follows: we want to calculate Ypc,dec from
-# Ypc,reg, Pdec, and inc_share_dec, so we start with
+# function for getting price, income, demand and bias data from a GCAM run and 
+# saving the results; takes as input a data file extracted from GCAM output in 
+# rgcam, along with scenarioname to use when saving results file (to a directory 
+# within data/processed given by gcam_results_dir); also requires income shares by 
+# region, decile, and time step, because per cap income by decile in GCAM output is 
+# incorrect, so it needs to be calculated from regional per cap income and income 
+# shares; it is calculated in the function as follows: we want to calculate Ypc,dec 
+# from Ypc,reg, Pdec, and inc_share_dec, so we start with
 # Ypc,dec = Ydec / Pdec 
 # Ypc,dec = Yreg * inc_share_dec / Pdec
 # Ypc,dec = Ypc,reg * Preg * inc_share_dec / Pdec

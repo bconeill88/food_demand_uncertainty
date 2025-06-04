@@ -1,13 +1,11 @@
 Most recent progress:
-I have identified parameter sets (iterations) for HD and LD outcomes that are max frequency for the world as a whole and for each region in terms of outcomes for individual or combined food types. I have plotted these against a sample of the full set of 10k outcomes, and have made tables of their maximum frequencies, and their iteration numbers, and how frequently particular iteration numbers appear across regions.
+I have identified parameter sets (iterations) for HD and LD outcomes that are max frequency for the world as a whole and for each region in terms of outcomes for region demand for individual or combined food types. I have plotted these against a sample of the full set of 10k outcomes, and have made tables of their maximum frequencies, and their iteration numbers, and how frequently particular iteration numbers appear across regions.
 
-- implement these regional and global max parameter sets for the deciles in each region, using Kanishka's code for allocation, and see if these parameters also span well the outcomes by decile, not just the outcomes for the region as a whole
-  - re-arrange code as follows:
-    - take first part of uncertainty_figure_parameters_for_intervals that saves tables of parameters and add it to 07 script (that script identifies the parameters, and logically can also build tables to save too)
-    - take second part of uncertainty_figure_... that plots regional demand and make it first part of new plot_demand_with_intervals script, which currently contains code for making same plots but for deciles; this will put all the similar plotting in one place
-    - for now, put the modification of demand for minimum consumption in the plot script; later, add it to an earlier file, possibly 03
+I have also created plots of demand based on these regional and global max parameter sets for the deciles in each region, both with the standard ambrosia demand function with a zero minimum demand, and using Kanishka's code that imposes a non-zero demand and reallocates across deciles. 
 
-- carry out the same analysis for other scenario types, like H and L response to prices
+Next, I need to carry out the same analysis for other scenario types, like H and L response to prices. However, the high price scenario that Kanishka created for GCAM did not produce much of a price difference. So we need a different GCAM scenario with high food prices, or to create an idealized set of price changes. 
+Is there anything wrong with an idealized price change such as adding an increasing increment to the GCAM Ref ML prices, so they reach, e.g., 50% higher by 2100?
+- one issue is what the relative price changes in Ps and Pn should be; I could, like last time, do this for the two individually, and 
 
 Lower priority
 
