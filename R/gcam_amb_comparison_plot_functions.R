@@ -8,26 +8,36 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
   # Ensure output directory exists
   dir.create("output/reports", recursive = TRUE, showWarnings = FALSE)
   
-  # Define variable groups and labels
+  # Define base variable groups
   var_groups <- list(
     "Food demand, deciles" = c("Qs", "Qn"),
     "Food demand, regional totals" = c("Qs.region", "Qn.region"),
     "Regional bias, deciles" = c("RBs", "RBn")
   )
   
-  # Define time period filters and corresponding row labels
+  # Conditionally add price comparison group
+  price_vars <- c("Ps", "Pn")
+  price_suffixes <- c("_gcam", "_amb")
+  all_price_cols_exist <- all(sapply(paste0(rep(price_vars, each = 2), price_suffixes), \(col) col %in% names(df)))
+  
+  if (all_price_cols_exist) {
+    var_groups[["Price comparison"]] <- price_vars
+  }
+  
+  # Time periods
   time_periods <- list(
     "Historical" = function(df) filter(df, year > 1975 & year < base_year),
     "Base year" = function(df) filter(df, year == base_year),
     "Projected" = function(df) filter(df, year >= base_year & year <= end_year)
   )
   
+  # Open PDF
   pdf_path <- file.path("output/reports", output_file)
   pdf(pdf_path, width = 10, height = 12)  # 2 columns x 3 rows layout
   
+  # Plot loop
   for (group_name in names(var_groups)) {
     vars <- var_groups[[group_name]]
-    
     plots <- list()
     
     for (period_label in names(time_periods)) {
@@ -43,11 +53,11 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
             y = paste0(v, "_amb")
           ) +
           theme_minimal()
+        
         plots[[length(plots) + 1]] <- plot
       }
     }
     
-    # Combine 6 plots into a page
     page_plot <- wrap_plots(plots, ncol = 2, nrow = 3)
     print(page_plot)
   }
@@ -55,6 +65,7 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
   dev.off()
   message("PDF saved to ", pdf_path)
 }
+
 
 # function for plotting comparison of decile demand, regional demand, and prices
 # between two different GCAM scenarios; produces panels on each page for
