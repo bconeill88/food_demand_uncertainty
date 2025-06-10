@@ -1,7 +1,7 @@
 {
     "dialog-state": {
-        "query": "demand_R",
-        "path": "/R",
+        "query": "obs_data_gcam32",
+        "path": "/scripts",
         "regex": false,
         "caseSensitive": false,
         "wholeWord": false,
@@ -9,7 +9,7 @@
         "useGitGrep": true,
         "excludeGitIgnore": true,
         "excludeFilePatterns": [],
-        "resultsCount": 115,
+        "resultsCount": 17,
         "errorCount": 0,
         "replaceErrors": "",
         "projectRelative": true

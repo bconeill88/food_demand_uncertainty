@@ -1,5 +1,4 @@
-# calculate and save demand and elasticities for subsample and intervals -------
-# ----
+# functions for calculating and saving demand and elasticities with ambrosia
 
 # function to calculate income elasticities for staples and non-staples from
 # a list of incomes and a parameter structure (result of a call to vec2param())
@@ -34,15 +33,15 @@ calc_price_elast <- function(food_demand,param_structure) {
 # function for calculating regional food demand and elasticities with the FE 
 # model, for a set of one or more parameter samples, a single set of input 
 # assumptions (prices, income), and a set of one or more region numbers;
-# global params are the 9 demand function parameters, are specific to each iteration,
+# globalparams are the 9 demand function parameters, are specific to each iteration,
 # but apply to all regions;
 # regparams are the fixed effects and bias adders, are specific to each iteration,
 # and to each region;
 # inputdata are the prices and income, are common to all iterations, but are specific
 # to each region;
-# function calls food.dmnd(), which calculates demand and budget shares, accounting
-# for fixed effects and regional bias, and which applies a food budget constraint 
-# that limits the sum of staples and non-staples shares to 1,
+# function calls food.dmnd() from ambrosia package, which calculates demand and 
+# budget shares, accounting for fixed effects and regional bias, and which applies 
+# a food budget constraint that limits the sum of staples and non-staples shares to 1,
 # saves regional results to sub-directory of data/processed given by "output_dir"
 # and "scen" using the file name demand_RX_case, where X is the region number and 
 # case an extension added if "case" is not "" in the function call;
@@ -188,6 +187,70 @@ food.dmnd.wrapper <- function(globalparams, regparams, inputdata, regions,
   }
 }
 
+# function to calculate food demand for an ensemble of parameter values, with each
+# ensemble member bias corrected to the base year value of the total regional
+# staples and non-staples demand of a reference scenario; takes as input global
+# and regional parameter ensembles; income and price input data; a list of region
+# numbers to do calculations for; the output directory; scenario name; case, which
+# serves as an output file name tag; the base year, and whether results should
+# be saved or returned
+food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regions, 
+                             output_dir, scen, case, baseyr, save_result = TRUE) {
+  
+  # get demand in base year for ensemble with zero bias terms
+  regparams_noBias <- regparams %>% mutate(RBs = 0, RBn = 0)
+  inputdata_baseyr <- inputdata %>% 
+    filter(year == baseyr) %>% select(-c(RBs, RBn))
+  demand_noBias <- food.dmnd.wrapper(
+    globalparams = globalparams,
+    regparams = regparams_noBias,
+    inputdata = inputdata_baseyr,
+    regions = regions,
+    output_dir = output_dir,
+    scen = scen,
+    case = "noBias",       # provide case so progress message is informative
+    save_result = FALSE)   # don't save result, return it
+  
+  # calculate bias terms for each iteration from difference between the zero 
+  # bias scenarios and the single reference scenario in the base year
+  
+  # get single reference scenario results
+  demand_ref <- map_dfr(regions, function(r) {
+    readRDS(paste0("data/processed/", output_dir, "/", scen, "/demand_R", r,
+                   "_MLparams.RDS"))
+  })
+  
+  # calculate bias terms
+  bias_terms <-
+    inner_join(demand_ref, demand_noBias,
+               by = c("GCAM_region_ID", "region", "gcam-consumer", "year"),
+               suffix = c(".ref", ".noBias")) %>%
+    mutate(RBs = Qs.region.ref - Qs.region.noBias,
+           RBn = Qn.region.ref - Qn.region.noBias) %>%
+    rename(iteration = iteration.noBias) %>%
+    # keep only what we need for regional bias terms
+    select(GCAM_region_ID, region, iteration, RBs, RBn) %>%
+    distinct()
+  
+  # add bias terms to the regional parameter data
+  regparams_wBias <- regparams %>%
+    left_join(bias_terms, 
+              by = c("GCAM_region_ID", "region", "iteration"))
+  
+  # calculate ambrosia demand with derived bias terms, for base year and projection
+  inputdata_proj <- inputdata %>% 
+    filter(year >= baseyr) %>% select(-c(RBs, RBn))
+  food.dmnd.wrapper(
+    globalparams = globalparams,
+    regparams = regparams_wBias,
+    inputdata = inputdata_proj,
+    regions = regions,
+    output_dir = output_dir,
+    scen = scen,
+    case = case,       
+    save_result = TRUE)           # save results to files
+}
+
 # function for calculating demand from observed prices and income, global and
 # regional parameter data, for a given measure (scen = ML, LPR, etc.) and
 # set of regions; results file includes observed prices and income, observed
@@ -222,6 +285,8 @@ food.dmnd.obs <- function(globalparamdata,FEdata,obsdata,scen,regions) {
 # holding on to the code for now just in case
 # ------------------------------------------------------------------------------
 
+if(FALSE) {
+  
 # function to calculate food demand (using food.dmnd() from ambrosia) without fixed effects
 # given a dataframe of price and income data (possibly including year and decile
 # information if the price and income paths are from GCAM), and a single row of a 
@@ -553,3 +618,4 @@ bias_correct_ambrosia_ensemble <- function(scen,case,regions,bias_yr,max_alphat)
   }
 }
 
+} # end if statement

@@ -114,62 +114,34 @@ lapply(scen_list_demand,function(x) {
     
   } else if(x == "Ref_ML_gcam_ens_bc") {
     
-    # get demand in base year for ensemble with zero bias terms
-    param_data_regional <- param_data_FE_clean_sub %>%
-      mutate(RBs = 0, RBn = 0)
-    input_data <- gcamoutput_Ref_ML %>% 
-      filter(year == 2015) %>% select(-c(RBs, RBn))
-    demand_noBias <- food.dmnd.wrapper(
-      param_data_global_clean_sub,
-      param_data_regional,
-      input_data,
-      reg_list,
-      procdata_dir,
-      "Ref_ML_gcam",
-      "noBias",      # provide case so progress message is informative
-      FALSE)         # don't save result, return it
+    # modifications for small test runs
+    param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
+    param_data_FE_clean_sub <- 
+      subset(param_data_FE_clean_sub,
+             iteration %in% param_data_global_clean_sub$iteration)
+    reg_list <- c(1,2)
     
-    # calculate bias terms for each iteration from difference between the zero 
-    # bias scenario and the reference scenario in the base year
-    # get reference scenario results
-    amboutput_Ref_ML_MLparams <- map_dfr(reg_list, function(r) {
-      readRDS(paste0("data/processed/",procdata_dir,"/Ref_ML_gcam/demand_R",r,"_MLparams.RDS"))
-    })
-    # calculate bias terms
-    bias_terms <- 
-      inner_join(amboutput_Ref_ML_MLparams, demand_noBias,
-                 by = c("GCAM_region_ID", "region", "gcam-consumer", "year"),
-                 suffix = c(".ref", ".noBias")) %>%
-      mutate(RBs = Qs.region.ref - Qs.region.noBias,
-             RBn = Qn.region.ref - Qn.region.noBias) %>%
-      # keep only what we need
-      select(c(GCAM_region_ID,region,year,`gcam-consumer`,RBs,RBn,iteration.noBias)) %>%
-      rename(iteration = iteration.noBias)
-    # add bias terms to the regional parameter data
-    bias_terms_summary <- bias_terms %>%
-      select(GCAM_region_ID, region, iteration, RBs, RBn) %>%
-      distinct()
-    param_data_regional <- param_data_FE_clean_sub %>%
-      left_join(bias_terms_summary, 
-                by = c("GCAM_region_ID", "region", "iteration"))
-    
-    # calculate ambrosia demand with derived bias terms, for base year and projection
-    input_data <- gcamoutput_Ref_ML %>% 
-      filter(year >= 2015) %>% select(-c(RBs, RBn))
-    food.dmnd.wrapper(
-      param_data_global_clean_sub,
-      param_data_regional,
-      input_data,
-      reg_list,
-      procdata_dir,
-      "Ref_ML_gcam",
-      "ens_bc",       # file ext: bias corrected ensemble
-      TRUE)           # save results to files
+    food.dmnd.ens_bc(
+      globalparams = param_data_global_clean_sub,
+      regparams = param_data_FE_clean_sub,
+      inputdata = gcamoutput_Ref_ML,
+      regions = reg_list,
+      output_dir = procdata_dir,
+      scen = "Ref_ML_gcam",
+      case = "ens_bc_10jun",  # file ext: bias corrected ensemble
+      baseyr = 2015
+    )
   }
 
-  # check results
-  # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc.RDS",
+  # check results: shows that newly calculated demand is correctly bias corrected
+  # to the 2015 regional results in the reference scenario (demand_ref below)
+  # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc_10jun.RDS",
   #               sep = "/"))
+  # tmp1 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc_rerun.RDS",
+  #                      sep = "/"))
+  # tmp2 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc.RDS",
+  #                      sep = "/"))
+  # demand_ref <- readRDS("data/processed/update9_cnstrlam_agg32FE_24jan25/Ref_ML_gcam/demand_R1_MLparams.RDS")
   
   # calculate demand and elasticities for decomposing uncertainty in outcomes for
   # default prices
