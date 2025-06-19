@@ -9,6 +9,7 @@ ensure_package(tidyverse)
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
+scen <- "Ref_ML_gcam"
 
 # define list of scenarios to run
 #scen_list_demand <- list("Ref_ML_gcam","Ref_ML_gcam_ens_bc")
@@ -70,13 +71,13 @@ if (interactive()) {
   ensure_package(webshot2)
   
   gtsave(gt(max_freq_table) %>% tab_header(title = "Maximum Frequencies"), 
-         file.path(output_dir, "table_max_frequencies_all_regions.png"))
+         file.path(procdata_dir, scen, "table_max_frequencies_all_regions.png"))
   
   gtsave(gt(iter_table) %>% tab_header(title = "Iteration Numbers of Maximum Frequency"), 
-         file.path(output_dir, "table_max_iterations_all_regions.png"))
+         file.path(procdata_dir, scen, "table_max_iterations_all_regions.png"))
 } else {
-  saveRDS(max_freq_table, file.path(output_dir, "table_max_frequencies_all_regions.RDS"))
-  saveRDS(iter_table, file.path(output_dir, "table_max_iterations_all_regions.RDS"))
+  saveRDS(max_freq_table, file.path(procdata_dir, scen, "table_max_frequencies_all_regions.RDS"))
+  saveRDS(iter_table, file.path(procdata_dir, scen, "table_max_iterations_all_regions.RDS"))
 }
 
 # create and save parameters corresponding to max frequency iterations for use in GCAM

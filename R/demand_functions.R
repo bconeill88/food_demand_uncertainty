@@ -33,18 +33,23 @@ calc_price_elast <- function(food_demand,param_structure) {
 # function for calculating regional food demand and elasticities with the FE 
 # model, for a set of one or more parameter samples, a single set of input 
 # assumptions (prices, income), and a set of one or more region numbers;
+#
 # globalparams are the 9 demand function parameters, are specific to each iteration,
 # but apply to all regions;
-# regparams are the fixed effects and bias adders, are specific to each iteration,
-# and to each region;
-# inputdata are the prices and income, are common to all iterations, but are specific
-# to each region;
+#
+# regparams are the fixed effects, are specific to each iteration and to each region;
+#
+# inputdata are the prices, income and bias adders, are specific to each region;
+# prices are common to all iterations, but bias adders are not, so currently the 
+# code treats this variable as iteration-specific; 
+#
 # function calls food.dmnd() from ambrosia package, which calculates demand and 
 # budget shares, accounting for fixed effects and regional bias, and which applies 
 # a food budget constraint that limits the sum of staples and non-staples shares to 1,
 # saves regional results to sub-directory of data/processed given by "output_dir"
 # and "scen" using the file name demand_RX_case, where X is the region number and 
 # case an extension added if "case" is not "" in the function call;
+#
 # if scen = "Obs" (calculating demand based on observed prices/income) or
 # save_results = FALSE, results for the single region calculated are returned,
 # not saved
@@ -52,23 +57,21 @@ food.dmnd.wrapper <- function(globalparams, regparams, inputdata, regions,
                               output_dir, scen, case, save_result = TRUE) {
   
   message("  calculating demand for scenario ", scen)
-  
-  # if no regional parameters df, initialize to zero for each region and iteration
+
+  # if no regional parameters df, which would occur if the demand model has no fixed
+  # effects, initialize to zero for each region and iteration
   if (is.null(regparams)) {
     regparams <- data.frame(
       GCAM_region_ID = rep(regions,nrow(globalparams)),
       iteration = rep(globalparams$iteration, each = length(regions)),
       staples_FE = rep(0, length(regions) * nrow(globalparams)),
-      RBs = rep(0, length(regions) * nrow(globalparams)),
-      RBn = rep(0, length(regions) * nrow(globalparams)),
       stringsAsFactors = FALSE)
-  # if regional parameters df exists, initialize any that are missing
-  } else {
-    if (!"staples_FE" %in% names(regparams)) regparams$staples_FE <- 0
-    if (!"RBs" %in% names(regparams)) regparams$RBs <- 0
-    if (!"RBn" %in% names(regparams)) regparams$RBn <- 0
-  }
+  } 
   
+  # if input data is missing bias adders, initialize to zero
+  if (!"RBs" %in% names(inputdata)) inputdata$RBs <- 0
+  if (!"RBn" %in% names(inputdata)) inputdata$RBn <- 0
+
   # initialize in case results will be returned rather than saved to files
   all_demand_results <- list()
   
@@ -78,7 +81,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, inputdata, regions,
     region_id <- regions[r]
     message("    starting region ", region_id)
     
-    # extract region-specific price/income data
+    # extract region-specific price/income/bias data
     inputdata_region <- inputdata %>% filter(GCAM_region_ID == region_id)
     if (nrow(inputdata_region) == 0) stop("No inputdata for region ", region_id)
     
@@ -103,31 +106,44 @@ food.dmnd.wrapper <- function(globalparams, regparams, inputdata, regions,
       regparams_reg_iter <- regparams_region %>% 
         filter(iteration == gparams$iteration)
       
+      # print("inputdata_region = ")
+      # print(inputdata_region)
+
+      # extract region input values for this iteration if necessary
+      inputdata_reg_iter <- if ("iteration" %in% names(inputdata_region)) {
+        inputdata_region %>% filter(iteration == gparams$iteration)
+      } else {
+        inputdata_region
+      }
+      
+      # print("inputdata_reg_iter = ")
+      # print(inputdata_reg_iter)
+      
       # calculate demand for this iteration
-      demand_reg_iter <- food.dmnd(inputdata_region$Ps, inputdata_region$Pn, 
-                                   inputdata_region$Y, params = param_structure,
+      demand_reg_iter <- food.dmnd(inputdata_reg_iter$Ps, inputdata_reg_iter$Pn, 
+                                   inputdata_reg_iter$Y, params = param_structure,
                                    NULL, # rgn argument, not needed
                                    regparams_reg_iter$staples_FE, 
-                                   regparams_reg_iter$RBs, 
-                                   regparams_reg_iter$RBn) %>%
+                                   inputdata_reg_iter$RBs, 
+                                   inputdata_reg_iter$RBn) %>%
         # add iteration number, likelihood value, bias adders
         mutate(iteration = gparams$iteration,
                LL = gparams$LL,
-               RBs = regparams_reg_iter$RBs,
-               RBn = regparams_reg_iter$RBn) %>%
+               RBs = inputdata_reg_iter$RBs,
+               RBn = inputdata_reg_iter$RBn) %>%
         # add elasticities
-        bind_cols(calc_income_elast(inputdata_region$Y, param_structure)) %>%
+        bind_cols(calc_income_elast(inputdata_reg_iter$Y, param_structure)) %>%
         # this must be done separately so that income elasticities are available
         bind_cols(calc_price_elast(., param_structure)) %>%
         # add input data
-        bind_cols(select(inputdata_region, Y, Ps, Pn, Y.region))
+        bind_cols(select(inputdata_reg_iter, Y, Ps, Pn, Y.region))
 
       # include additional columns if present
-      if ("gcam-consumer" %in% colnames(inputdata_region)) {
-        demand_reg_iter <- bind_cols(select(inputdata_region, `gcam-consumer`), demand_reg_iter)
+      if ("gcam-consumer" %in% colnames(inputdata_reg_iter)) {
+        demand_reg_iter <- bind_cols(select(inputdata_reg_iter, `gcam-consumer`), demand_reg_iter)
       }
-      if ("year" %in% colnames(inputdata_region)) {
-        demand_reg_iter <- bind_cols(select(inputdata_region, year), demand_reg_iter)
+      if ("year" %in% colnames(inputdata_reg_iter)) {
+        demand_reg_iter <- bind_cols(select(inputdata_reg_iter, year), demand_reg_iter)
       }
       
       return(demand_reg_iter)
@@ -190,20 +206,19 @@ food.dmnd.wrapper <- function(globalparams, regparams, inputdata, regions,
 # function to calculate food demand for an ensemble of parameter values, with each
 # ensemble member bias corrected to the base year value of the total regional
 # staples and non-staples demand of a reference scenario; takes as input global
-# and regional parameter ensembles; income and price input data; a list of region
-# numbers to do calculations for; the output directory; scenario name; case, which
-# serves as an output file name tag; the base year, and whether results should
-# be saved or returned
+# and regional parameter ensembles; income, price and bias adder input data; a list
+# of region numbers to do calculations for; the output directory; scenario name; 
+# case, which serves as an output file name tag; the base year, and whether results 
+# should be saved or returned
 food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regions, 
                              output_dir, scen, case, baseyr, save_result = TRUE) {
   
   # get demand in base year for ensemble with zero bias terms
-  regparams_noBias <- regparams %>% mutate(RBs = 0, RBn = 0)
   inputdata_baseyr <- inputdata %>% 
-    filter(year == baseyr) %>% select(-c(RBs, RBn))
+    filter(year == baseyr) %>% mutate(RBs = 0, RBn = 0)
   demand_noBias <- food.dmnd.wrapper(
     globalparams = globalparams,
-    regparams = regparams_noBias,
+    regparams = regparams,
     inputdata = inputdata_baseyr,
     regions = regions,
     output_dir = output_dir,
@@ -214,11 +229,9 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regions,
   # calculate bias terms for each iteration from difference between the zero 
   # bias scenarios and the single reference scenario in the base year
   
-  # get single reference scenario results
-  demand_ref <- map_dfr(regions, function(r) {
-    readRDS(paste0("data/processed/", output_dir, "/", scen, "/demand_R", r,
-                   "_MLparams.RDS"))
-  })
+  # get gcam reference scenario results to correct to
+  demand_ref <- 
+    readRDS(paste0("data/processed/", output_dir, "/results_gcam/gcamoutput_Ref_ML.RDS"))
   
   # calculate bias terms
   bias_terms <-
@@ -227,23 +240,25 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regions,
                suffix = c(".ref", ".noBias")) %>%
     mutate(RBs = Qs.region.ref - Qs.region.noBias,
            RBn = Qn.region.ref - Qn.region.noBias) %>%
-    rename(iteration = iteration.noBias) %>%
     # keep only what we need for regional bias terms
     select(GCAM_region_ID, region, iteration, RBs, RBn) %>%
     distinct()
   
-  # add bias terms to the regional parameter data
-  regparams_wBias <- regparams %>%
-    left_join(bias_terms, 
-              by = c("GCAM_region_ID", "region", "iteration"))
+  # Filter inputdata to keep only relevant years and drop RBs, RBn
+  inputdata_filtered <- inputdata %>%
+    filter(year >= baseyr) %>%
+    select(-RBs, -RBn)
   
-  # calculate ambrosia demand with derived bias terms, for base year and projection
-  inputdata_proj <- inputdata %>% 
-    filter(year >= baseyr) %>% select(-c(RBs, RBn))
+  # Perform the cross join by matching on region + GCAM_region_ID; then, for each 
+  # (region, GCAM_region_ID, iteration) combo, repeat inputdata
+  inputdata_wBias <- bias_terms %>%
+    inner_join(inputdata_filtered, by = c("GCAM_region_ID", "region"))
+  
+  # calculate ambrosia demand with derived bias terms
   food.dmnd.wrapper(
     globalparams = globalparams,
-    regparams = regparams_wBias,
-    inputdata = inputdata_proj,
+    regparams = regparams,
+    inputdata = inputdata_wBias,
     regions = regions,
     output_dir = output_dir,
     scen = scen,

@@ -190,6 +190,24 @@ if (FALSE) {
            `gcam-consumer` == "FoodDemand_Group1") %>%
     arrange(region,year) -> tmp4
   
+  # check absolute values of base year demand
+  gcam_amb_output_Ref_ML %>% 
+    filter(year == 2015, 
+           `gcam-consumer` == "FoodDemand_Group1") %>%
+    select(region, year, Qs.region_gcam, Qs.region_amb, 
+           Qn.region_gcam, Qn.region_amb) -> tmp
+  # get current bias corrected results to check their base year values
+  amb_ens_bc_Ref_ML <- bind_rows(
+    readRDS(
+    paste0("data/processed/", procdata_dir, "/Ref_ML_gcam/demand_R1_ens_bc_10jun.RDS")
+    ),
+    readRDS(
+      paste0("data/processed/", procdata_dir, "/Ref_ML_gcam/demand_R2_ens_bc_10jun.RDS")
+    )) %>%
+    filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
+    select(region, year, Qs.region, Qn.region) %>%
+    group_by(region,)
+  
   
   # identify outliers and cases of good fit
   gcam_amb_output_Ref_ML %>% filter(Qs_amb/Qs_gcam < 0.8) -> tmp

@@ -61,7 +61,9 @@ GCAM_output_list <- list("Ref_ML"=prj_Ref_ML)
 iwalk(GCAM_output_list, ~ get_GCAM_results(.x, inc_share_data, .y, gcam_procdata_dir))
 
 # debug by checking results
-# results <- readRDS(paste("data/processed",procdata_dir,"results_gcam/gcamoutput_Ref_HD.RDS",sep="/"))
+# results <- readRDS(paste("data/processed", gcam_procdata_dir, "gcamoutput_Ref_HD.RDS",sep="/"))
+# tmp_new <- readRDS(paste("data/processed",gcam_procdata_dir,"gcamoutput_Ref_ML_test.RDS",sep="/"))
+# tmp_old <- readRDS(paste("data/processed",gcam_procdata_dir,"gcamoutput_Ref_ML_11apr25.RDS",sep="/"))
 
 
 # check results for income by comparing average per cap income across deciles

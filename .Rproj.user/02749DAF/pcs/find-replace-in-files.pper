@@ -1,15 +1,15 @@
 {
     "dialog-state": {
-        "query": "obs_data_gcam32",
+        "query": "food.dmnd.wrapper",
         "path": "/scripts",
         "regex": false,
         "caseSensitive": false,
         "wholeWord": false,
         "filePatterns": [],
-        "useGitGrep": true,
+        "useGitGrep": false,
         "excludeGitIgnore": true,
         "excludeFilePatterns": [],
-        "resultsCount": 17,
+        "resultsCount": 9,
         "errorCount": 0,
         "replaceErrors": "",
         "projectRelative": true

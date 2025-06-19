@@ -29,7 +29,7 @@ if (Sys.info()["nodename"] == "WF10681") {
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
 
 # define list of scenarios to run
-scen_list_demand <- list("Ref_ML_gcam_ens_bc")
+scen_list_demand <- list("Ref_ML_gcam")
 
 # define regions to run over
 # get command line arguments
@@ -37,7 +37,7 @@ args <- commandArgs(trailingOnly = TRUE)
 if (length(args) > 0) {
   reg_list <- c(as.numeric(args[1]))
 } else {
-  reg_list <- c(1:32)
+  reg_list <- c(1:2) # 32)
 }
 
 # load input assumptions for ambrosia (prices, income, etc.)
@@ -99,6 +99,18 @@ lapply(scen_list_demand,function(x) {
       "MLparams",
       TRUE)            # save results to files
     
+    # check against GCAM base year results
+    # tmp_gcam <- gcamoutput_Ref_ML %>% 
+    #   filter(year == 2015,
+    #          `gcam-consumer` == "FoodDemand_Group1") %>%
+    #   select(region, year, Qs.region, Qn.region) 
+    # tmp_amb <- map_dfr(reg_list, function(r) {
+    #   readRDS(paste0("data/processed/", procdata_dir, "/Ref_ML_gcam/demand_R", r, "_ens_bc_10jun.RDS")) %>%
+    #             filter(year == 2015,
+    #                    `gcam-consumer` == "FoodDemand_Group1") %>%
+    #             select(region, year, Qs.region, Qn.region)
+    #           })
+
   } else if(x == "Ref_ML_gcam_ens") {
 
     # Ref_ML_gcam
@@ -115,11 +127,11 @@ lapply(scen_list_demand,function(x) {
   } else if(x == "Ref_ML_gcam_ens_bc") {
     
     # modifications for small test runs
-    param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
-    param_data_FE_clean_sub <- 
-      subset(param_data_FE_clean_sub,
-             iteration %in% param_data_global_clean_sub$iteration)
-    reg_list <- c(1,2)
+    # param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
+    # param_data_FE_clean_sub <-
+    #   subset(param_data_FE_clean_sub,
+    #          iteration %in% param_data_global_clean_sub$iteration)
+    # reg_list <- c(1,2)
     
     food.dmnd.ens_bc(
       globalparams = param_data_global_clean_sub,
@@ -128,20 +140,29 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
-      case = "ens_bc_10jun",  # file ext: bias corrected ensemble
+      case = "ens_bc_18jun",  # file ext: bias corrected ensemble
       baseyr = 2015
     )
   }
 
   # check results: shows that newly calculated demand is correctly bias corrected
   # to the 2015 regional results in the reference scenario (demand_ref below)
-  # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc_10jun.RDS",
-  #               sep = "/"))
-  # tmp1 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc_rerun.RDS",
-  #                      sep = "/"))
-  # tmp2 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R1_ens_bc.RDS",
-  #                      sep = "/"))
-  # demand_ref <- readRDS("data/processed/update9_cnstrlam_agg32FE_24jan25/Ref_ML_gcam/demand_R1_MLparams.RDS")
+  # selected_cols <- c("Qs.region", "Qn.region")
+  # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc_18jun.RDS",
+  #               sep = "/")) %>% 
+  #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
+  #   summarise(across(all_of(selected_cols), list(median = median, range = ~ list(range(.)))))
+  # tmp1 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc_10jun.RDS",
+  #                      sep = "/")) %>% 
+  #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
+  #   summarise(across(all_of(selected_cols), list(median = median, range = ~ list(range(.)))))
+  # tmp2 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc.RDS",
+  #                      sep = "/")) %>% 
+  #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
+  #   summarise(across(all_of(selected_cols), list(median = median, range = ~ list(range(.)))))
+  # demand_ref <- 
+  #   readRDS(paste0("data/processed/", procdata_dir, "/results_gcam/gcamoutput_Ref_ML.RDS")) %>%
+  #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1")
   
   # calculate demand and elasticities for decomposing uncertainty in outcomes for
   # default prices

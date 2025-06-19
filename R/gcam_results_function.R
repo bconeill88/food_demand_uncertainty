@@ -91,5 +91,5 @@ get_GCAM_results <- function(proj_data,inc_shares,scen,gcam_results_dir) {
 
   # save results
   saveRDS(gcamoutput,file=paste0(
-    "data/processed/",gcam_results_dir,"/gcamoutput_",scen,"_test.RDS"))
+    "data/processed/",gcam_results_dir,"/gcamoutput_",scen,".RDS"))
 }

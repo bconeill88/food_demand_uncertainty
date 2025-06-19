@@ -1,13 +1,9 @@
 {
+    "path": "H:/My Drive/R projects/food_demand/food_demand_uncertainty/scripts",
     "sortOrder": [
         {
             "columnIndex": 2,
             "ascending": true
-        },
-        {
-            "columnIndex": 4,
-            "ascending": false
         }
-    ],
-    "path": "H:/My Drive/R projects/food_demand/food_demand_uncertainty/scripts"
+    ]
 }

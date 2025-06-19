@@ -3,9 +3,19 @@ I have identified parameter sets (iterations) for HD and LD outcomes that are ma
 
 I have also created plots of demand based on these regional and global max parameter sets for the deciles in each region, both with the standard ambrosia demand function with a zero minimum demand, and using Kanishka's code that imposes a non-zero demand and reallocates across deciles. 
 
-Next, I need to carry out the same analysis for other scenario types, like H and L response to prices. However, the high price scenario that Kanishka created for GCAM did not produce much of a price difference. So we need a different GCAM scenario with high food prices, or to create an idealized set of price changes. 
-Is there anything wrong with an idealized price change such as adding an increasing increment to the GCAM Ref ML prices, so they reach, e.g., 50% higher by 2100?
-- one issue is what the relative price changes in Ps and Pn should be; I could, like last time, do this for the two individually, and 
+Next, I need to do two things:
+
+1. Check the above results. Is the bias correction correct, i.e., correcting demand to be equal to observations? Are the GCAM results equal to observations? Are the ambrosia results being corrected to the GCAM results? If not, briefly try to understand why not and solidify the code. Are the current estimates of the HD/LD parameters based on a correct ensemble? If not, redo them and send to Kanishka.
+
+- This has now been done, and the bias correction is correct, as are the derived parameters for HD and LD
+
+- question to pursue in the future: in food.dmnd.ens_bc() is it necessary to run food.dmnd.wrapper() (which calls food.dmnd) again after calculating RBx, or can RBx just be added to the demand calculated with a zero bias term? also, why is the base year value of Qx.region a little bit different across iterations in low income regions? ideally we'd want them all to be very close to the same; finally, it may be useful to refactor this function to make the RBx inputs an explicit argument, to minimize confusion
+
+task: refactor code for gcam analysis to limit it to reading in rgcam tables, saving as RDS files, and plotting comparisons of results to results from the parameter analysis (thus removing 102, which would be taken over by 03; would require moving calculation of HD scenarios to 03 -- ML scenarios already there); or, since running scenarios based on gcam price/income scenarios is now a big part of the parameter analysis, it might be worth moving this to an early script in the main series, before the other analyses take place; then having the plotting analysis in 104 be a separate plotting script, along with others
+
+2. Carry out the same analysis for H and L responses to prices. However, the high price scenario that Kanishka created for GCAM did not produce much of a price difference. So Kanishka is producing a high price scenario using the price multipliers discussed with Page.
+
+
 
 Lower priority
 
