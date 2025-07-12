@@ -1,24 +1,91 @@
-Most recent progress:
-I have identified parameter sets (iterations) for HD and LD outcomes that are max frequency for the world as a whole and for each region in terms of outcomes for region demand for individual or combined food types. I have plotted these against a sample of the full set of 10k outcomes, and have made tables of their maximum frequencies, and their iteration numbers, and how frequently particular iteration numbers appear across regions.
+HD/LD analysis steps and progress
+
+1. Identify parameter sets (iterations) for HD and LD outcomes that are max frequency for the world as a whole.
+
+Done. Also identified parameter sets that are max frequency for each region independently, but decided there isn't a good justification for such parameters so we will use the global ones.
+
+2. Pass parameter sets to Kanishka for GCAM runs
+
+Done. These were implemented using the minimum demand code Kanishka created, which imposes a minimum staples demand of 600 calories; demand is "donated" from deciles above the threshold in order to preserve total regional consumption.
+
+NOTE: Kanishka ran HD and LD scenarios with the wrong parameters. He is currently redoing those runs.
+
+3. Check ambrosia results against GCAM, to confirm it is a good emulator
+
+In progress
+
+We are basing our parameter identification on ambrosia runs with a large parameter ensemble, based on the assumption that ambrosia is a reasonably good emulator of what GCAM would produce with different parameters. The reason it might not be is that it does not include price feedbacks, while GCAM does (i.e., alternative parameters affect demand, change in demand can affect prices, leading to a new price-demand equilibrium).
+
+Check is done by producing scatter plots of GCAM Ref_HD scenario vs ambrosia Ref_ML_HDparams scenario (i.e., ambrosia estimate of HD results using only ML prices; or analogously for LD results), for regional demand and prices. The check passes if there is little difference in regional demand and prices in future years (and of course in the base year they should match too). In principle decile demand should be the same too, but see "decile demand differences in base year.txt" for an explanation why, for practical reasons, this is not always the case in the base year, which would extend to future years as well.
+
+Initial results for both the HD and LD cases show v little difference in projected prices, but large differences in projected regional demand (base year prices are the same and base year demand is very close to the same). This does not seem like a correct result, because the price differences are not large enough to cause the demand differences.
+
+NOTE: AFTER MUCH ANALYSIS OF THE POTENTIAL REASONS FOR THE DIFFERENCES, KANISHKA DETERMINED THAT HE HAD USED THE WRONG PARAMETERS IN GCAM, SO THOSE RUNS NEED TO BE RE-DONE. PART OF MY ANALYSIS LED TO CHANGES IN THE AMBROSIA IMPLEMENTATION ON MINIMUM DEMAND, EXPLAINED NEXT.
+
+MATCHING GCAM'S BIAS ADDER CALCULATION IN AMBROSIA
+
+In ambrosia, I was calculating a regional bias term that applies equally to all deciles. After demand projections are done, I then applied the minimum demand function, which reallocates demand across deciles in order to enforce a minimum level of demand while keeping regional demand the same. This was applied independently in each time step (base year and projection). In contrast, in GCAM Kanishka calculates the bias adders in the base year (and historical years) using the minimum demand function. That is, decile-specific bias adders are calculated such that the minimum demand constraint is met, and regional demand is preserved at observed values. These bias adders are then kept constant over time, meaning that the minimum calorie constaint may be violated in future years (it is not applied again after the base year, since this is hard to do in the GCAM code).
+
+I have changed the implementation of minimum demand in ambrosia to match the GCAM approach. In the function food.dmnd.ens_bc, bias adders are calculated in a two stage process. In the first stage, a regional bias term is calculated as before (calculating regional demand with zero bias and taking difference from observed demand). In the second stage, I add this regional term equally to all deciles and pass the resulting decile-level demand to the minimum demand function, which reallocates demand across deciles as necessary. I then calculate a decile-level bias adjustment based on these results. The total bias terms are then defined as the sum of the regional bias term from the first stage and the decile-level bias adjustment from the second stage. These are then held constant in the future.
+
+A check on the bias adder calculation and the minimum demand implementation is to compare GCAM and ambrosia results for the base year. Regional demand should be identical; if it is not, it suggests that possibly the minimum demand constraint in ambrosia is not preserving regional demand, or that the first-stage regional bias term is being calculated incorrectly. Decile demand should also be identical; if it is not, it suggests that the minimum demand constraint may not be operating identically to Kanishka's implementation, or that GCAM is not reaching the full solution for demand. Bias adders should also be identical in the two models. If they are not, then the problem is in the bias adder calculation rather than in the demand calculation.
+
+One way to look into what is going on is to go back to simply comparing the GCAM Ref ML and the ambrosia Ref ML scenarios. 
+
+Projected decile staples demand seems to have too much scatter, given that regional staples demand matches pretty well, as do the regional bias adders; also, GCAM has a few decile staples demands that are below the threshold
+
+
+In demand_functions.R, need a way to save results to the same directory when running in parallel. Current method works great when no running that way, by saving to a folder with a time stamp. But if it is in parallel, then each CPU creates its own output folder with a separate timestamp. Maybe I need to pass the path name for output files in the original call to food.dmnd.ens_bc, and maybe include a time_stamp = TRUE argument. For now I have commented out the time stamp lines in food.dmnd.wrapper when running in parallel.
+
+4. Plot results for SF presentation
+
+4a. plot GCAM ML, HD, and LD results against sample of ambrosia ensemble (or shaded area covering full range, or 95% interval)
+
+
+I have plotted the HD and LD ambrosia outcomes against a sample of the full set of 10k outcomes, and have made tables of their maximum frequencies, and their iteration numbers, and how frequently particular iteration numbers appear across regions.
 
 I have also created plots of demand based on these regional and global max parameter sets for the deciles in each region, both with the standard ambrosia demand function with a zero minimum demand, and using Kanishka's code that imposes a non-zero demand and reallocates across deciles. 
 
-Next, I need to do two things:
+5. Carry out the same analysis for H and L responses to prices, once Kanishka produces a high price scenario. Process will be:
 
-1. Check the above results. Is the bias correction correct, i.e., correcting demand to be equal to observations? Are the GCAM results equal to observations? Are the ambrosia results being corrected to the GCAM results? If not, briefly try to understand why not and solidify the code. Are the current estimates of the HD/LD parameters based on a correct ensemble? If not, redo them and send to Kanishka.
+5a. Produce GCAM high price (HP) scenario
 
-- This has now been done, and the bias correction is correct, as are the derived parameters for HD and LD
+5b. Run ambrosia parameter ensemble based on HP prices and income
 
-- question to pursue in the future: in food.dmnd.ens_bc() is it necessary to run food.dmnd.wrapper() (which calls food.dmnd) again after calculating RBx, or can RBx just be added to the demand calculated with a zero bias term? also, why is the base year value of Qx.region a little bit different across iterations in low income regions? ideally we'd want them all to be very close to the same; finally, it may be useful to refactor this function to make the RBx inputs an explicit argument, to minimize confusion
+5c. Create ensemble of differences between the HP and Ref scenario ensembles
 
-task: refactor code for gcam analysis to limit it to reading in rgcam tables, saving as RDS files, and plotting comparisons of results to results from the parameter analysis (thus removing 102, which would be taken over by 03; would require moving calculation of HD scenarios to 03 -- ML scenarios already there); or, since running scenarios based on gcam price/income scenarios is now a big part of the parameter analysis, it might be worth moving this to an early script in the main series, before the other analyses take place; then having the plotting analysis in 104 be a separate plotting script, along with others
+5d. Identify HPR and LPR parameters from this ensemble of differences
 
-2. Carry out the same analysis for H and L responses to prices. However, the high price scenario that Kanishka created for GCAM did not produce much of a price difference. So Kanishka is producing a high price scenario using the price multipliers discussed with Page.
+5e. Run GCAM scenarios with HPR and LPR scenarios, for both Ref and HP conditions
+
+5f. Check ambrosia results against these GCAM results to confirm emulation works
+
+5g. Plot results for presentation
 
 
+CODE CHANGES FOR THE FUTURE
 
-Lower priority
+1. Possible fixes to food.dmnd.ens_bc() 
 
-- need to modify the plotting fuction for the pdf output to have fixed y axes of max 3.0 for Qs and Qn, and 4.5 for Qtot, for better visual comparison
+1a. Is it necessary to run food.dmnd.wrapper() (which calls food.dmnd) again after calculating RBx, or can RBx just be added to the demand calculated with a zero bias term? 
 
-- start creating basic readme.txt file that explains the code and directory structure
+1b. Why is the base year value of Qx.region a little bit different across iterations in low income regions? Ideally we'd want them all to be very close to the same.
+
+1c. It may be useful to refactor this function to make the RBx inputs an explicit argument, to minimize confusion
+
+2. Refactor code for gcam analysis (100 series scripts)
+
+2a. Limit script 101 to reading in rgcam tables, saving as RDS files, and move it to beginning of script chain
+
+2b. Move calculation of ambrosia HD and LD results to 03 demand script
+
+2c. Put all plotting in the 104 plotting script
+
+3. Create folder for parameter identifications
+
+3a. Create folder within data/processed/update9_cnstrlam_agg32FE_24jan25 for storing parameter identifications (eg, ML, HD, LD, etc.), move files from Ref_ML_gcam to that folder, and change code that saves those files to the wrong folder (see parameters_for_intervals.R) or reads them in from the wrong folder (calculate_demand.R)
+
+4. Modify the plotting fuction for the pdf output to have fixed y axes of max 3.0 for Qs and Qn, and 4.5 for Qtot, for better visual comparison
+
+5. Update readme file to explain the code and directory structure
+

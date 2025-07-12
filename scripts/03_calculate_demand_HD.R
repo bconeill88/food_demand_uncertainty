@@ -16,14 +16,14 @@ source("R/init_packages.R")
 ensure_package(tidyverse)
 
 # install ambrosia if necessary based on machine (WF10681 or PIC)
-force_install <- TRUE   # set to TRUE for testing new ambrosia version
-if (Sys.info()["nodename"] == "WF10681") {
-  install_ambrosia_once("H:/My Drive/R projects/food_demand/ambrosia", force_install)
-} else {
-  # setwd("/qfs/people/onei736/food_demand/uncertainty")
-  # install_ambrosia_once(force_install)
-  install_ambrosia_once("/qfs/people/onei736/food_demand/ambrosia", force_install)
-}
+# force_install <- FALSE   # set to TRUE for testing new ambrosia version
+# if (Sys.info()["nodename"] == "WF10681") {
+#   install_ambrosia_once(force_install)
+# } else {
+#   setwd("/qfs/people/onei736/food_demand/uncertainty")
+#   install_ambrosia_once(force_install)
+# }
+devtools::load_all("/qfs/people/onei736/food_demand/ambrosia")
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
@@ -31,14 +31,11 @@ gcam_results_dir <- "results_gcam"
 
 # define list of scenarios to run
 scen_list_demand <- 
-#  list("Ref_ML_gcam_bc")
-#  list("Ref_ML_gcam_HDparams_bc")
-#  list("Ref_ML_gcam_LDparams_bc")
-  list("Ref_ML_gcam_bc", "Ref_HD_gcam_bc", "Ref_LD_gcam_bc", 
-       "Ref_ML_gcam_HDparams_bc", "Ref_ML_gcam_LDparams_bc")
 #  list("Ref_ML_gcam_ens_bc")
-#  list("Ref_HD_gcam_ens_bc")
+  list("Ref_HD_gcam_ens_bc")
 #  list("Ref_LD_gcam_ens_bc")
+#  list("Ref_ML_gcam", "Ref_HD_gcam", "Ref_LD_gcam", 
+#       "Ref_ML_gcam_HDparams", "Ref_ML_gcam_LDparams")
 #  list("Ref_ML_gcam_ens_bc", "Ref_HD_gcam_ens_bc", "Ref_LD_gcam_ens_bc") 
 
 # define regions to run over
@@ -55,7 +52,7 @@ Qs_floor <- 0.6
 Qn_floor <- 0.01
 alloc_ratio <- 1.1
 
-# load input assumptions for ambrosia (prices, income)
+# load input assumptions for ambrosia (prices, income, etc.)
 gcamoutput_Ref_ML <- readRDS(file.path("data", "processed", procdata_dir, 
                                        gcam_results_dir, "gcamoutput_Ref_ML.RDS"))
 gcamoutput_Ref_HD <- readRDS(file.path("data", "processed", procdata_dir, 
@@ -121,24 +118,17 @@ lapply(scen_list_demand,function(x) {
     food.dmnd.plus.FE.regions(param_data_global_clean_sub,param_data_FE_clean_sub,
                               incprice_RefML,"RefML",reg_list)
 
-  # single GCAM scenarios
+  } else if(x == "Ref_ML_gcam") {
 
-  } else if(x == "Ref_ML_gcam_bc") {
-
-    food.dmnd.ens_bc(
-      globalparams = params_ML_intervals_global %>% filter(measure == "ML"),
-      regparams = params_ML_intervals_FE %>% filter(measure == "ML"),
-      inputdata = gcamoutput_Ref_ML,
-      regions = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_ML_gcam",
-      case = "MLparams_bc",
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
-      save_result = TRUE)
+    food.dmnd.wrapper(
+      params_ML_intervals_global %>% filter(measure == "ML"),
+      params_ML_intervals_FE %>% filter(measure == "ML"),
+      gcamoutput_Ref_ML,
+      reg_list,
+      procdata_dir,
+      "Ref_ML_gcam",
+      "MLparams",
+      TRUE)            # save results to files
     
     # check against GCAM base year results
     # tmp_gcam <- gcamoutput_Ref_ML %>% 
@@ -152,76 +142,18 @@ lapply(scen_list_demand,function(x) {
     #             select(region, year, Qs.region, Qn.region)
     #           })
 
-  } else if(x == "Ref_ML_gcam_HDparams_bc") {
-    
-    food.dmnd.ens_bc(
-      globalparams = params_HDLD_global %>% filter(iteration == iter_HD),
-      regparams = params_HDLD_FE %>% filter(iteration == iter_HD),
-      inputdata = gcamoutput_Ref_ML,
-      regions = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_ML_gcam",
-      case = "HDparams_bc",
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
-      save_result = TRUE)
+  } else if(x == "Ref_ML_gcam_ens") {
 
-  } else if(x == "Ref_ML_gcam_LDparams_bc") {
+    food.dmnd.wrapper(
+      param_data_global_clean_sub,
+      param_data_FE_clean_sub,
+      gcamoutput_Ref_ML,
+      reg_list,
+      procdata_dir,
+      "Ref_ML_gcam",
+      "MLparams_ens",
+      TRUE)            # save results to files
     
-    food.dmnd.ens_bc(
-      globalparams = params_HDLD_global %>% filter(iteration == iter_LD),
-      regparams = params_HDLD_FE %>% filter(iteration == iter_LD),
-      inputdata = gcamoutput_Ref_ML,
-      regions = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_ML_gcam",
-      case = "LDparams_bc",
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
-      save_result = TRUE)
-    
-  } else if(x == "Ref_HD_gcam_bc") {
-    
-    food.dmnd.ens_bc(
-      globalparams = params_HDLD_global %>% filter(iteration == iter_HD),
-      regparams = params_HDLD_FE %>% filter(iteration == iter_HD),
-      inputdata = gcamoutput_Ref_HD,
-      regions = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_HD_gcam",
-      case = "HDparams_bc",
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
-      save_result = TRUE)
-    
-  } else if(x == "Ref_LD_gcam_bc") {
-    
-    food.dmnd.ens_bc(
-      globalparams = params_HDLD_global %>% filter(iteration == iter_LD),
-      regparams = params_HDLD_FE %>% filter(iteration == iter_LD),
-      inputdata = gcamoutput_Ref_LD,
-      regions = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_LD_gcam",
-      case = "LDparams_bc",
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
-      save_result = TRUE)
-
-  # GCAM scenario ensembles
-
   } else if(x == "Ref_ML_gcam_ens_bc") {
     
     # modifications for small test runs
@@ -238,7 +170,7 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "ens_bc_alt",  # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -270,7 +202,55 @@ lapply(scen_list_demand,function(x) {
     # demand_ref <-
     #   readRDS(paste0("data/processed/", procdata_dir, "/results_gcam/gcamoutput_Ref_ML.RDS")) %>%
     #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1")
-        
+    
+  } else if(x == "Ref_ML_gcam_HDparams") {
+    
+    food.dmnd.wrapper(
+      params_HDLD_global %>% filter(iteration == iter_HD),
+      params_HDLD_FE %>% filter(iteration == iter_HD),
+      gcamoutput_Ref_ML,
+      reg_list,
+      procdata_dir,
+      "Ref_ML_gcam",
+      "HDparams",
+      TRUE)            # save results to files
+    
+  } else if(x == "Ref_ML_gcam_LDparams") {
+    
+    food.dmnd.wrapper(
+      params_HDLD_global %>% filter(iteration == iter_LD),
+      params_HDLD_FE %>% filter(iteration == iter_LD),
+      gcamoutput_Ref_ML,
+      reg_list,
+      procdata_dir,
+      "Ref_ML_gcam",
+      "LDparams",
+      TRUE)            # save results to files
+    
+  } else if(x == "Ref_HD_gcam") {
+    
+    food.dmnd.wrapper(
+      params_HDLD_global %>% filter(iteration == iter_HD),
+      params_HDLD_FE %>% filter(iteration == iter_HD),
+      gcamoutput_Ref_HD,
+      reg_list,
+      procdata_dir,
+      "Ref_HD_gcam",
+      "HDparams",
+      TRUE)            # save results to files
+    
+  } else if(x == "Ref_LD_gcam") {
+    
+    food.dmnd.wrapper(
+      params_HDLD_global %>% filter(iteration == iter_LD),
+      params_HDLD_FE %>% filter(iteration == iter_LD),
+      gcamoutput_Ref_LD,
+      reg_list,
+      procdata_dir,
+      "Ref_LD_gcam",
+      "LDparams",
+      TRUE)            # save results to files
+    
   } else if(x == "Ref_HD_gcam_ens_bc") {
     
     food.dmnd.ens_bc(
@@ -280,7 +260,7 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_HD_gcam",
-      case = "ens_bc",        # file ext: bias corrected ensemble
+      case = "ens_bc_alt",  # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -298,7 +278,7 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_LD_gcam",
-      case = "ens_bc",          # file ext: bias corrected ensemble
+      case = "ens_bc_alt",  # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,

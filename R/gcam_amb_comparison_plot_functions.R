@@ -3,7 +3,7 @@
 # staples and non-staples (columns) and historical, base year, and projected time
 # periods (rows); historical leaves out year 1975; three pages, one for each 
 # variable; saved to output/reports
-plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
+plot_gcam_amb_comparison <- function(df, base_year, end_year, output_subdir, output_file) {
   
   # Ensure output directory exists
   dir.create("output/reports", recursive = TRUE, showWarnings = FALSE)
@@ -18,11 +18,18 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
   # Conditionally add price comparison group
   price_vars <- c("Ps", "Pn")
   price_suffixes <- c("_gcam", "_amb")
-  all_price_cols_exist <- all(sapply(paste0(rep(price_vars, each = 2), price_suffixes), \(col) col %in% names(df)))
+  all_price_cols_exist <- all(sapply(paste0(rep(price_vars, each = 2), price_suffixes),
+                                   function(col) col %in% names(df)))
+  
+  # print("all_price_cols_exist")
+  # print(all_price_cols_exist)
   
   if (all_price_cols_exist) {
     var_groups[["Price comparison"]] <- price_vars
   }
+  
+  # print("var_groups")
+  # print(var_groups)
   
   # Time periods
   time_periods <- list(
@@ -31,8 +38,12 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
     "Projected" = function(df) filter(df, year >= base_year & year <= end_year)
   )
   
+  # Create output subdirectory
+  output_path <- file.path("output/reports/gcam_amb_comparison", output_subdir)
+  dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+  
   # Open PDF
-  pdf_path <- file.path("output/reports", output_file)
+  pdf_path <- file.path(output_path, output_file)
   pdf(pdf_path, width = 10, height = 12)  # 2 columns x 3 rows layout
   
   # Plot loop
@@ -42,6 +53,13 @@ plot_gcam_amb_comparison <- function(df, base_year, end_year, output_file) {
     
     for (period_label in names(time_periods)) {
       df_period <- time_periods[[period_label]](df)
+      
+      # if(group_name == "Price comparison") {
+      #   print(paste0(period_label, " price df"))
+      #   print(df_period %>% filter(region == "South Korea") %>%
+      #           select(region, `gcam-consumer`, year, Ps_gcam, Ps_amb,
+      #                  Pn_gcam, Pn_amb), n = 50)
+      # }
       
       for (v in vars) {
         plot <- ggplot(df_period, aes_string(x = paste0(v, "_gcam"), y = paste0(v, "_amb"))) +

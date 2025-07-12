@@ -1,15 +1,15 @@
 {
     "dialog-state": {
-        "query": "food.dmnd.wrapper",
-        "path": "/scripts",
+        "query": "apply_min_demand",
+        "path": "",
         "regex": false,
         "caseSensitive": false,
         "wholeWord": false,
         "filePatterns": [],
-        "useGitGrep": false,
+        "useGitGrep": true,
         "excludeGitIgnore": true,
         "excludeFilePatterns": [],
-        "resultsCount": 9,
+        "resultsCount": 2,
         "errorCount": 0,
         "replaceErrors": "",
         "projectRelative": true

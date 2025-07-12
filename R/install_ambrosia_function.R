@@ -17,8 +17,9 @@ install_ambrosia_once <- function(path, force_install = FALSE) {
   
   message("Installing 'ambrosia' from source at: ", path)
   tryCatch({
-    devtools::install(path, upgrade = "never", quiet = TRUE)
-    library(ambrosia)
+    devtools::load_all(path)
+    # devtools::install(path, upgrade = "never", quiet = TRUE)
+    # library(ambrosia)
     message("Successfully installed and loaded 'ambrosia'.")
   }, error = function(e) {
     message("Failed to install or load 'ambrosia': ", e$message)
