@@ -9,7 +9,9 @@ ensure_package(tidyverse)
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
+procdata_subdir <- "demand_ens_bc_12jul25"
 scen <- "Ref_ML_gcam"
+data_path <- file.path("data", "processed", procdata_dir, scen, procdata_subdir)
 
 # define list of scenarios to run
 #scen_list_demand <- list("Ref_ML_gcam","Ref_ML_gcam_ens_bc")
@@ -34,13 +36,13 @@ hi_max <- 100
 lo_min <- 0
 lo_max <- 5
 
-if(FALSE) {
+if(TRUE) {
   
 message("Identifying parameters for HD/LD parameters")
 
 # calculate parameters by taking iteration that falls most frequently in high/low intervals
 # lapply(scen_list_demand,function(x)
-make_HD_LD_params_freq(year_iter, procdata_dir, "Ref_ML_gcam", "_ens_bc", reg_list,
+make_HD_LD_params_freq(year_iter, procdata_dir, procdata_subdir, "Ref_ML_gcam", "_ens_bc", reg_list,
                        hi_min, hi_max,
                        lo_min, lo_max,
                        save_outputs = TRUE)
@@ -52,8 +54,7 @@ message("Finished identifying parameters for HD/LD intervals")
 # create and save tables of frequencies and iteration numbers, as results
 
 # load iteration frequency results
-max_freqs <- readRDS(
-  file.path("data", "processed", procdata_dir, scen, "max_iter_frequencies_ens_bc.RDS"))
+max_freqs <- readRDS(file.path(data_path, "max_iter_frequencies_ens_bc.RDS"))
 
 # create table of frequencies of max frequency iterations for each case
 max_freq_table <- max_freqs %>%
@@ -79,16 +80,14 @@ if (interactive()) {
   ensure_package(webshot2)
   
   gtsave(gt(max_freq_table) %>% tab_header(title = "Maximum Frequencies"), 
-         file.path("data", "processed", procdata_dir, scen, 
-                   "table_max_frequencies_all_regions.png"))
+         file.path(data_path, "table_max_frequencies_all_regions.png"))
   
   gtsave(gt(iter_table) %>% tab_header(title = "Iteration Numbers of Maximum Frequency"), 
-         file.path("data", "processed", procdata_dir, scen, 
-                   "table_max_iterations_all_regions.png"))
+         file.path(data_path, "table_max_iterations_all_regions.png"))
 } else {
-  saveRDS(max_freq_table, file.path("data", "processed", procdata_dir, scen, 
+  saveRDS(max_freq_table, file.path(data_path, 
                                     "table_max_frequencies_all_regions.RDS"))
-  saveRDS(iter_table, file.path("data", "processed", procdata_dir, scen, 
+  saveRDS(iter_table, file.path(data_path, 
                                 "table_max_iterations_all_regions.RDS"))
 }
 
@@ -97,8 +96,7 @@ if (interactive()) {
 # save iteration table
 write.csv(
   iter_table, 
-  file.path("data", "processed", procdata_dir, scen, "iter_table_HDLD_Qtot.csv"),
-  row.names = FALSE)
+  file.path(data_path, "iter_table_HDLD_Qtot.csv"), row.names = FALSE)
 
 # load parameter data
 load(file.path("data", "processed", procdata_dir, "inputs", 
@@ -116,8 +114,7 @@ params_global_LD_Qtot <- param_data_global_clean_sub %>%
 params_global_Qtot <- bind_rows(params_global_HD_Qtot, params_global_LD_Qtot)
 write.csv(
   params_global_Qtot, 
-  file.path("data", "processed", procdata_dir, scen, "params_global_HDLD_Qtot.csv"),
-  row.names = FALSE)
+  file.path(data_path, "params_global_HDLD_Qtot.csv"), row.names = FALSE)
 
 # get and save FE parameters for max frequency iterations
 params_FE_HD_Qtot <- param_data_FE_clean_sub %>%
@@ -129,6 +126,5 @@ params_FE_LD_Qtot <- param_data_FE_clean_sub %>%
 params_FE_Qtot <- bind_rows(params_FE_HD_Qtot, params_FE_LD_Qtot)
 write.csv(
   params_FE_Qtot, 
-  file.path("data", "processed", procdata_dir, scen, "params_FE_HDLD_Qtot.csv"),
-  row.names = FALSE)
+  file.path(data_path, "params_FE_HDLD_Qtot.csv"), row.names = FALSE)
 

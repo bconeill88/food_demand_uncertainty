@@ -34,9 +34,9 @@ scen_list_demand <-
 #  list("Ref_ML_gcam_bc")
 #  list("Ref_ML_gcam_HDparams_bc")
 #  list("Ref_ML_gcam_LDparams_bc")
-  list("Ref_ML_gcam_bc", "Ref_HD_gcam_bc", "Ref_LD_gcam_bc", 
-       "Ref_ML_gcam_HDparams_bc", "Ref_ML_gcam_LDparams_bc")
-#  list("Ref_ML_gcam_ens_bc")
+#  list("Ref_ML_gcam_bc", "Ref_HD_gcam_bc", "Ref_LD_gcam_bc", 
+#       "Ref_ML_gcam_HDparams_bc", "Ref_ML_gcam_LDparams_bc")
+  list("Ref_ML_gcam_ens_bc")
 #  list("Ref_HD_gcam_ens_bc")
 #  list("Ref_LD_gcam_ens_bc")
 #  list("Ref_ML_gcam_ens_bc", "Ref_HD_gcam_ens_bc", "Ref_LD_gcam_ens_bc") 

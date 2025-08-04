@@ -1,15 +1,18 @@
 # function for calculating parameters representative of high demand (HD) and low
 # demand (LD) outcomes for an ensemble of demand results based on parameters
 # indicated by "data_dir" and income and prices from "scen". 
+# Demand ensembles are read in from directory given by "data_dir", "scen", and
+# "data_subdir".
 # Method selects demand iterations that fall in high and low intervals of demand
 # defined by percentiles given in the _min and _max arguments, for region numbers
 # contained in "regions" and years given in "year_vals".
-# Results are saved in sub-directory given by "data_dir" and "scen", with "scen_case"
-# appended to the file name.
+# Results are saved in sub-directory given by "data_dir", "scen", and "data_subdir",
+# with "scen_case" appended to the file name.
 
 make_HD_LD_params_freq <- function(
     year_vals,
     data_dir,
+    data_subdir,
     scen,
     scen_case,
     regions,
@@ -23,7 +26,7 @@ make_HD_LD_params_freq <- function(
   message("Calculating HD and LD parameters for scenario ", scen)
   
   # Central output directory path
-  out_dir <- file.path("data", "processed", data_dir, scen)
+  out_dir <- file.path("data", "processed", data_dir, scen, data_subdir)
   if (save_outputs) {
     dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   }
@@ -42,7 +45,7 @@ make_HD_LD_params_freq <- function(
   
   message("  Extracting demand in HD/LD intervals for all regions and years")
   
-  demand_intervals <- get_demand_intervals(year_vals, data_dir, scen, regions, bounds)
+  demand_intervals <- get_demand_intervals(year_vals, data_dir, data_subdir, scen, regions, bounds)
   
   if (save_outputs) {
     saveRDS(demand_intervals, 
@@ -51,7 +54,7 @@ make_HD_LD_params_freq <- function(
   
   message("  Computing maximum-frequency iterations in HD/LD intervals")
   
-  max_iter_frequencies <- compute_max_iteration_frequencies(demand_intervals, data_dir, scen)
+  max_iter_frequencies <- compute_max_iteration_frequencies(demand_intervals)
   
   if (save_outputs) {
     saveRDS(max_iter_frequencies, 
@@ -87,13 +90,13 @@ make_HD_LD_params_freq <- function(
 # a type of food demand falling in given quantile; food types include Qn, Qs, Qtot, and Qs and
 # Qn simultaneously; quantiles include those defined for high demand and low demand as passed
 # in "bounds"
-get_demand_intervals <- function(year_vals, data_dir, scen, regions, bounds) {
+get_demand_intervals <- function(year_vals, data_dir, data_subdir, scen, regions, bounds) {
   
   # loop over regions
   demand_intervals_list <- map(regions, function(r) {
     
     # get demand ensemble for region
-    demand_reg_path <- file.path("data", "processed", data_dir, scen, paste0("demand_R", r, "_ens_bc.RDS"))
+    demand_reg_path <- file.path("data", "processed", data_dir, scen, data_subdir, paste0("demand_R", r, "_ens_bc.RDS"))
     demand_reg <- readRDS(demand_reg_path)
     
     # loop over years
@@ -153,7 +156,8 @@ get_demand_intervals <- function(year_vals, data_dir, scen, regions, bounds) {
 # calculate the iteration that appears with the highest frequency across 
 # years and deciles, for each region individually and for all regions combined,
 # and return as a data frame
-compute_max_iteration_frequencies <- function(demand_result, data_dir, scen) {
+# compute_max_iteration_frequencies <- function(demand_result, data_dir, data_subdir, scen) {
+compute_max_iteration_frequencies <- function(demand_result) {
   
   # interval/food type cases expressed as list of pairs
   grid <- expand.grid(c("HD", "LD"), c("Qs", "Qn", "Qtot", "QsQn"))

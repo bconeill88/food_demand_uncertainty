@@ -7,17 +7,18 @@ cat("\n")
 
 # generate figures for food demand uncertainty analysis
 
-# load packages
-library(tidyverse)
 
-# load functions
-#source("R/demand_functions.R")
+# Load functions
+source("R/init_packages.R")
 
-# subdirectories of data/processed to use
+# Make sure packages are installed/loaded
+ensure_package(tidyverse)
+
+# Define data directories
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
 
 # define list of scenarios to run
-scen_list_demand <- list(c("Ref_ML_gcam_ens_bc"))
+# scen_list_demand <- list(c("Ref_ML_gcam_ens_bc"))
 
 # define regions to run over
 # get command line arguments
@@ -25,14 +26,147 @@ args <- commandArgs(trailingOnly = TRUE)
 if (length(args) > 0) {
   reg_list <- c(as.numeric(args[1]))
 } else {
-  reg_list <- c(1:2)
+  reg_list <- c(1:3)
 }
 
+# Parameter marginal densities -------------------------------------------------
+# ----
 
-# create figures directory if necessary
-if(!dir.exists(paste(analysis_dir,"figures",sep="/"))) {
-  dir.create(paste(analysis_dir,"figures",sep="/"))
+make_density_plots_global <- function(
+    paramdata,  # df of parameter samples, for density plot
+    title, subtitle,
+    output_path)
+{
+  # convert to long format for faceting, 9 variables
+  param_colnames <- subset(paramdata, select=As:Pm) %>% colnames() 
+  paramdata_long <- 
+    gather(paramdata[,1:9], key="parameter", value="value", c(param_colnames))
+
+  # plot
+  thickness <- 1
+  g <- ggplot() +
+    geom_density(data = paramdata_long, aes(x = value),
+                 linewidth = thickness, color = "black") +
+    facet_wrap(~parameter, ncol=3, scales = "free") +
+    theme(strip.text = element_text(size = 15)) +
+    ggtitle(title, subtitle=subtitle)
+  plot(g)
+  ggsave(file=paste(output_path, "probdens_params_global.png",sep="/"),
+         width = 8, height = 6, dpi = 150)
 }
+
+# plot densities of 9 global parameters with option to include three vertical lines
+# make_density_plots_global <- function(
+#     paramdata,  # df of parameter samples, for density plot
+#     MLparams,    # df containing ML parameter values, for vertical line
+#     edmondsparams,
+#     gcamparams,
+#     title,subtitle)
+# {
+#   # convert to long format for faceting, 9 variables
+#   param_colnames <- subset(paramdata,select=As:Pm) %>% colnames() 
+#   paramdata_long <- 
+#     gather(paramdata[,1:9],key="parameter", value="value",c(param_colnames))
+#   # define ML to plot as vertical lines
+#   vline.p1.ml <- data.frame(
+#     p1_ML = as.vector(
+#       t(MLparams[MLparams$measure == "ML",] %>% subset(select=As:Pm))),
+#     parameter = c(param_colnames))
+#   vline.p2.ml <- data.frame(
+#     p2_ML = as.vector(
+#       t(edmondsparams["ML",] %>% subset(select=As:Pm))),
+#     parameter = c(param_colnames))
+#   vline.p3.ml <- data.frame(
+#     p3_ML = as.vector(
+#       t(gcamparams["ML",] %>% subset(select=As:Pm))),
+#     parameter = c(param_colnames))
+#   
+#   # plot
+#   thickness <- 1
+#   colors = c("2025" = "red","2021" = "blue","2017" = "green")
+#   g <- ggplot() +
+#     geom_density(data = paramdata_long, aes(x = value),
+#                  linewidth = thickness, color = "black") +
+#     geom_vline(data = vline.p1.ml, aes(xintercept = p1_ML, color = "2025"),
+#                linewidth = thickness) +
+#     geom_vline(data = vline.p2.ml, aes(xintercept = p2_ML, color = "2017"),
+#                linewidth = thickness) +
+#     geom_vline(data = vline.p3.ml, aes(xintercept = p3_ML, color = "2021"),
+#                linewidth = thickness) +
+#     facet_wrap(~parameter, ncol=3, scales = "free") +
+#     scale_color_manual(name="Estimate",values=colors) +
+#     theme(strip.text = element_text(size = 15)) +
+#     ggtitle(title,subtitle=subtitle)
+#   plot(g)
+#   ggsave(file=paste(analysis_dir,fig_path,"probdens_params_global_withML.png",sep="/"),
+#          width = 8, height = 6, dpi = 150)
+# }
+
+# plot densities of FE parameters (16 regions) along with ML estimates
+make_density_plots_FE <- function(
+    paramdata,  # df of parameter samples, for density plot
+    MLparams,    # df containing ML parameter values, for vertical line
+    title,subtitle)      # plot title
+{
+  # define ML to plot as vertical lines
+  vline.p1.ml <- data.frame(
+    p1_ML = as.vector(MLparams[MLparams$measure == "ML","staples_FE"]),
+    region = as.vector(MLparams[MLparams$measure == "ML","region"]))
+  # plot
+  thickness <- 1
+  g <- ggplot() +
+    geom_density(data = paramdata, aes(x = staples_FE),
+                 linewidth = thickness, color = "black") +
+    geom_vline(data = vline.p1.ml, aes(xintercept = p1_ML),
+               linewidth = thickness, color = "red") +
+    facet_wrap(~region, ncol=4, scales = "free") +
+    theme(strip.text = element_text(size = 15)) +
+    ggtitle(title,subtitle=subtitle)
+  plot(g)
+  ggsave(file=paste(analysis_dir,fig_path,"probdens_params_FE_withML.png",sep="/"),
+         width = 8, height = 6, dpi = 150)
+}
+
+# load needed files
+load(file.path("data", "processed", procdata_dir, "inputs", "param_data_global_clean_sub.Rdata"))
+
+# define output directory and create if needed
+output_dir <- file.path("output", "figures", procdata_dir)
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+# plot global parameters
+make_density_plots_global(
+  param_data_global_clean_sub,
+  "Global parameter densities",
+  procdata_dir,
+  output_dir
+)
+
+# make_density_plots_global(
+#   param_data_global_clean_sub,
+#   params_ML_intervals_global,
+#   params_2017,
+#   params_2021,
+#   "Global parameter densities and Max Likelihood estimates",
+#   "")
+
+# load needed files
+load(paste(analysis_dir,input_path,"param_data_FE_clean_sub.Rdata",sep="/"))
+load(paste(analysis_dir,results_path,"params_ML_intervals_FE.Rdata",sep="/"))
+
+# plot FE parameters
+make_density_plots_FE(
+  param_data_FE_clean_sub %>% filter(GCAM_region_ID <=16),
+  params_ML_intervals_FE %>% filter(GCAM_region_ID <=16),
+  "FE parameter densities and Max Likelihood estimates",
+  "")
+
+# clean up
+rm(param_data_FE_clean_sub,param_data_global_clean_sub,params_ML_intervals_FE,
+   params_ML_intervals_global)
+
+
+# not updated for new file structure beyond here
 
 # Parameter traces ------------------------------------------------------------------
 # UPDATE THIS
@@ -75,111 +209,7 @@ ggsave("param_trace_FE_2.png",path = paste(analysis_dir,fig_path,sep="/"),
 rm(param_data_global_clean_10k,param_data_FE_clean_10k)
 
 
-# Parameter marginal densities -------------------------------------------------
-# ----
 
-# plot densities of 9 global parameters along with ML estimates: current, 2017
-# params, and 2021 params
-make_density_plots_global <- function(
-    paramdata,  # df of parameter samples, for density plot
-    MLparams,    # df containing ML parameter values, for vertical line
-    edmondsparams,
-    gcamparams,
-    title,subtitle)
-{
-  # convert to long format for faceting, 9 variables
-  param_colnames <- subset(paramdata,select=As:Pm) %>% colnames() 
-  paramdata_long <- 
-    gather(paramdata[,1:9],key="parameter", value="value",c(param_colnames))
-  # define ML to plot as vertical lines
-  vline.p1.ml <- data.frame(
-    p1_ML = as.vector(
-      t(MLparams[MLparams$measure == "ML",] %>% subset(select=As:Pm))),
-    parameter = c(param_colnames))
-  vline.p2.ml <- data.frame(
-    p2_ML = as.vector(
-      t(edmondsparams["ML",] %>% subset(select=As:Pm))),
-    parameter = c(param_colnames))
-  vline.p3.ml <- data.frame(
-    p3_ML = as.vector(
-      t(gcamparams["ML",] %>% subset(select=As:Pm))),
-    parameter = c(param_colnames))
-
-  # plot
-  thickness <- 1
-  colors = c("2025" = "red","2021" = "blue","2017" = "green")
-  g <- ggplot() +
-    geom_density(data = paramdata_long, aes(x = value),
-                 linewidth = thickness, color = "black") +
-    geom_vline(data = vline.p1.ml, aes(xintercept = p1_ML, color = "2025"),
-               linewidth = thickness) +
-    geom_vline(data = vline.p2.ml, aes(xintercept = p2_ML, color = "2017"),
-                 linewidth = thickness) +
-    geom_vline(data = vline.p3.ml, aes(xintercept = p3_ML, color = "2021"),
-                 linewidth = thickness) +
-      facet_wrap(~parameter, ncol=3, scales = "free") +
-      scale_color_manual(name="Estimate",values=colors) +
-    theme(strip.text = element_text(size = 15)) +
-    ggtitle(title,subtitle=subtitle)
-  plot(g)
-  ggsave(file=paste(analysis_dir,fig_path,"probdens_params_global_withML.png",sep="/"),
-         width = 8, height = 6, dpi = 150)
-}
-
-# plot densities of FE parameters (16 regions) along with ML estimates
-make_density_plots_FE <- function(
-    paramdata,  # df of parameter samples, for density plot
-    MLparams,    # df containing ML parameter values, for vertical line
-    title,subtitle)      # plot title
-{
-  # define ML to plot as vertical lines
-  vline.p1.ml <- data.frame(
-    p1_ML = as.vector(MLparams[MLparams$measure == "ML","staples_FE"]),
-    region = as.vector(MLparams[MLparams$measure == "ML","region"]))
-  # plot
-  thickness <- 1
-  g <- ggplot() +
-    geom_density(data = paramdata, aes(x = staples_FE),
-                 linewidth = thickness, color = "black") +
-    geom_vline(data = vline.p1.ml, aes(xintercept = p1_ML),
-               linewidth = thickness, color = "red") +
-    facet_wrap(~region, ncol=4, scales = "free") +
-    theme(strip.text = element_text(size = 15)) +
-    ggtitle(title,subtitle=subtitle)
-  plot(g)
-  ggsave(file=paste(analysis_dir,fig_path,"probdens_params_FE_withML.png",sep="/"),
-         width = 8, height = 6, dpi = 150)
-}
-
-# load needed files
-load(paste(analysis_dir,input_path,"param_data_global_clean_sub.Rdata",sep="/"))
-load(paste(analysis_dir,results_path,"params_ML_intervals_global.Rdata",sep="/"))
-load(paste0("inputs/derived/params_2017.Rdata"))
-load(paste0("inputs/derived/params_2021.Rdata"))
-
-# plot global parameters
-make_density_plots_global(
-  param_data_global_clean_sub,
-  params_ML_intervals_global,
-  params_2017,
-  params_2021,
-  "Global parameter densities and Max Likelihood estimates",
-  "")
-
-# load needed files
-load(paste(analysis_dir,input_path,"param_data_FE_clean_sub.Rdata",sep="/"))
-load(paste(analysis_dir,results_path,"params_ML_intervals_FE.Rdata",sep="/"))
-
-# plot FE parameters
-make_density_plots_FE(
-  param_data_FE_clean_sub %>% filter(GCAM_region_ID <=16),
-  params_ML_intervals_FE %>% filter(GCAM_region_ID <=16),
-  "FE parameter densities and Max Likelihood estimates",
-  "")
-
-# clean up
-rm(param_data_FE_clean_sub,param_data_global_clean_sub,params_ML_intervals_FE,
-   params_ML_intervals_global)
 
 # Values of fixed effects -------------------------------------------------
 # ----
