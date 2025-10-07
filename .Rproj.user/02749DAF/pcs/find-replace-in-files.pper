@@ -1,6 +1,6 @@
 {
     "dialog-state": {
-        "query": "apply_min_demand",
+        "query": "apply_min_demand_refscen_baseyr",
         "path": "",
         "regex": false,
         "caseSensitive": false,

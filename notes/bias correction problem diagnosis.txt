@@ -1,0 +1,134 @@
+with call to food.dmnd
+
+(this is same in both calls)
+[1] "demand_noBias_baseyr"
+# A tibble: 100 × 9
+   iteration GCAM_region_ID region `gcam-consumer`     year    Qs    Qn
+       <dbl>          <int> <chr>  <chr>              <dbl> <dbl> <dbl>
+ 1    193002             11 China  FoodDemand_Group1   2015  2.11 0.480
+ 2    193002             11 China  FoodDemand_Group10  2015  1.45 1.73 
+ 3    193002             11 China  FoodDemand_Group2   2015  1.91 0.660
+ 4    193002             11 China  FoodDemand_Group3   2015  1.80 0.779
+ 5    193002             11 China  FoodDemand_Group4   2015  1.73 0.879
+ 6    193002             11 China  FoodDemand_Group5   2015  1.68 0.969
+ 7    193002             11 China  FoodDemand_Group6   2015  1.64 1.06 
+ 8    193002             11 China  FoodDemand_Group7   2015  1.60 1.15 
+ 9    193002             11 China  FoodDemand_Group8   2015  1.56 1.26 
+10    193002             11 China  FoodDemand_Group9   2015  1.52 1.39 
+11    193003             11 China  FoodDemand_Group1   2015  1.57 0.425
+12    193003             11 China  FoodDemand_Group10  2015  1.36 1.56 
+13    193003             11 China  FoodDemand_Group2   2015  1.51 0.587
+14    193003             11 China  FoodDemand_Group3   2015  1.47 0.694
+15    193003             11 China  FoodDemand_Group4   2015  1.45 0.784
+   Qs.region Qn.region
+       <dbl>     <dbl>
+ 1      1.70     1.04 
+ 2      1.70     1.04 
+ 3      1.70     1.04 
+ 4      1.70     1.04 
+ 5      1.70     1.04 
+ 6      1.70     1.04 
+ 7      1.70     1.04 
+ 8      1.70     1.04 
+ 9      1.70     1.04 
+10      1.70     1.04 
+11      1.44     0.927
+12      1.44     0.927
+13      1.44     0.927
+14      1.44     0.927
+15      1.44     0.927
+# ℹ 85 more rows
+
+demand_ref_baseyr is same in both calls
+
+bias_terms_reg is same in both calls (it is just subtraction of regional demand between demand_noBias_baseyr and demand_ref_base_yr)
+
+now we implement these regional bias terms in calculation of base year demand; in principle this should produce regional demand that matches the reference base year
+
+however the two approaches differ: here it does not match demand_ref_baseyr, whereas straight addition does; this means demand function is not just calculating demand without bias and then adding bias terms
+[1] "demand_regBias_baseyr"
+# A tibble: 100 × 9
+   region iteration  year    Qs    Qn Qs.region Qn.region    RBs   RBn
+   <chr>      <dbl> <dbl> <dbl> <dbl>     <dbl>     <dbl>  <dbl> <dbl>
+ 1 China     193002  2015  2.42 0.910      1.79      1.48 0.0172 0.457
+ 2 China     193002  2015  1.46 2.18       1.79      1.48 0.0172 0.457
+ 3 China     193002  2015  2.09 1.10       1.79      1.48 0.0172 0.457
+ 4 China     193002  2015  1.94 1.22       1.79      1.48 0.0172 0.457
+ 5 China     193002  2015  1.83 1.32       1.79      1.48 0.0172 0.457
+ 6 China     193002  2015  1.75 1.41       1.79      1.48 0.0172 0.457
+ 7 China     193002  2015  1.69 1.50       1.79      1.48 0.0172 0.457
+ 8 China     193002  2015  1.63 1.60       1.79      1.48 0.0172 0.457
+ 9 China     193002  2015  1.58 1.71       1.79      1.48 0.0172 0.457
+10 China     193002  2015  1.54 1.84       1.79      1.48 0.0172 0.457
+11 China     193003  2015  2.04 0.960      1.77      1.48 0.275  0.565
+12 China     193003  2015  1.63 2.12       1.77      1.48 0.275  0.565
+13 China     193003  2015  1.90 1.13       1.77      1.48 0.275  0.565
+14 China     193003  2015  1.83 1.24       1.77      1.48 0.275  0.565
+15 China     193003  2015  1.78 1.33       1.77      1.48 0.275  0.565
+
+input to the calculation of demand_regBias_baseyr
+(confirms that it is the same as for demand_noBias_baseyr)
+[1] "inputdata_region after ordering in wrapper"
+ [1] "GCAM_region_ID" "region"         "gcam-consumer"  "year"           "Pn"            
+ [6] "Ps"             "Pop"            "income.share"   "Y.region"       "Y"             
+[11] "Qn"             "Qs"             "Qtot"           "Qm"             "alpha.s"       
+[16] "alpha.n"        "alpha.m"        "alpha.t"        "Qs.region"      "Qn.region"     
+[21] "Qtot.region"   
+# A tibble: 10 × 10
+   region `gcam-consumer`     year     Y     Ps    Pn    Qs    Qn Qs.region Qn.region
+   <chr>  <chr>              <dbl> <dbl>  <dbl> <dbl> <dbl> <dbl>     <dbl>     <dbl>
+ 1 China  FoodDemand_Group1   2015  1.64 0.0576 0.484  1.96 0.923      1.72      1.49
+ 2 China  FoodDemand_Group10  2015 22.3  0.0576 0.484  1.56 2.20       1.72      1.49
+ 3 China  FoodDemand_Group2   2015  2.63 0.0576 0.484  1.85 1.11       1.72      1.49
+ 4 China  FoodDemand_Group3   2015  3.44 0.0576 0.484  1.78 1.23       1.72      1.49
+ 5 China  FoodDemand_Group4   2015  4.25 0.0576 0.484  1.74 1.33       1.72      1.49
+ 6 China  FoodDemand_Group5   2015  5.10 0.0576 0.484  1.70 1.43       1.72      1.49
+ 7 China  FoodDemand_Group6   2015  6.07 0.0576 0.484  1.68 1.52       1.72      1.49
+ 8 China  FoodDemand_Group7   2015  7.27 0.0576 0.484  1.66 1.61       1.72      1.49
+ 9 China  FoodDemand_Group8   2015  8.87 0.0576 0.484  1.63 1.72       1.72      1.49
+10 China  FoodDemand_Group9   2015 11.5  0.0576 0.484  1.61 1.86       1.72      1.49
+
+we then take those base year demand results and adjust the decile-level demand (preserving regional totals) if necessary for minimum demand constraints; however in our test case (region 11, China), the constraint does not bind, so demand is not adjusted
+
+we recalculate the decile-specific bias terms by taking the regional bias terms that we started with (same in both approaches) and adding these (possibly) adjusted values (zero in both cases)
+
+thus final "bias_terms" are the same in both cases, because they don't depend on the base year demand calculated in the two approaches (which differs); those different base year demands are just used separately to check whether the minimum demand constraint is violated, and isn't in either case
+
+then final demand results are calculated with this final set of bias terms by calling the demand function (rather than just adding them to the noBias results), and it turns out the same as the base year demand in the approach that calls the demand function
+
+thus both approaches yield the same result, and it differs from the regional demand in the reference case because the demand function appears not to solve for demand with no bias and then add the bias adder, which is the approach taken to calculate the bias in the first place
+
+instead, the bias adder is integral to the demand function, because demand affects budget shares, and budget shares affect the price elasticities, and price elasticities affect demand and budget shares; thus adding the bias term to demand also leads to a change in price elasticities, which has its own affect on demand; the simple approach of adding the bias term doesn't work
+
+there is also a budget constraint in the demand function, which might be triggered when applying it, and would not be triggered if simply adding a bias term to a zero bias term demand result
+
+what this means for bias correction:
+
+in theory, the correct way to solve for a bias adder would be to set up the equation:
+
+Qs = f(RBs) = Qgcam,baseyr
+
+and solve for RBs; we'd need a root finder to search for the RBs that makes these two terms equal. We'd need to do this for regional demand for each region in the base year.
+
+When reallocating demand over deciles by adjusting the decile-specific bias term, it technically means that simply adding and subtracing from the bias term, and then recalculating demand, will not yield exactly the results expected. Rather, simply reallocating demand across deciles after an otherwise final result is obtained would be the right approach, not changing the bias adder and then running the demand function. The only problem here would be that it would not provide a check on the budget constraint at the decile level again.
+
+another option:
+do we want to treat the bias correction term differently from the regional bias adder? Ie calculate demand in the base year for an alternative parameter set using the bias adder from GCAM's ML calibration run, then simply add another term, external to the demand function, that corrects its demand to the base year value?
+
+What is GCAM doing? How is it solving for a bias term?
+
+A summary of the problem: forgetting about the min demand threshold, just take the simple case: if I take an iteration for China, and calculate demand with zero bias for those parameters, and then subtract the GCAM reference case regional demand results for the base year, assign that to be the regional bias parameters, and then use those in the demand function to calculate base year demand, I don't match base year demand. Because the bias parameters themselves induce a demand change.
+
+if the bias adder should be a simple adder after the fact, it should be independent of the demand function. the procedure should be:
+1. calculate base year demand with no bias adder (but including 0 demand constraint and budget constraint)
+2. calculate bias adder as difference from GCAM reference demand (ie, observations)
+3. calculate final demand as zero_bias demand plus bias adder (again apply zero demand constraint and budget constraint)
+4. repeat (3) for all future years
+
+conversation with Kanishka:
+
+GCAM takes two different approaches: in historical years (including base year), it calculates demand by using the demand function with zero bias, and then adding the difference between that result and the observations. In future years, it takes the difference calculated for the base year, and uses that as the bias adder as an input to the demand function. This has two problems: the change from the base year to the first year of projection will involve a sharp change in demand for some parameter sets in some regions, which can be substantial in some cases. Second, it is unclear what the effect of the bias adder is in future years, since it will differ as budget shares change and the elasticities that depend on them change.
+
+The best approach is to have the bias adder internal to the demand function, because that way the function will be calculating budget shares and elasticities always consistent with the full amount of demand. If demand were only calculated with zero bias (and then bias terms added separately afterward), the budget shares and elasticities would not be consistent with full demand. So for the base year, we should be calculating the bias adder by solving the nonlinear equation for demand as a function of the bias adder such that demand is equal to the observed value. That bias adder can then continue to be used in future calls to the demand function as prices and income evolve. This will eliminate the first problem with the approach, the shift in behavior in the first year of projection, although it will still mean that the full effect of the bias adder in future years will not be clear.
+
+Kanishka will try to add this to the data system, and then I can adopt it in ambrosia to calculate bias adders for a full range of parameter sets. 

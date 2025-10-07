@@ -1,0 +1,44 @@
+gcam data system calibration method, as implemented in zaglu_L203.ag_an_demand_input.R, 9/9/25
+
+Kanishka's modification to implement new method starts at line 508
+
+510-511: call ambrosia to get 1st round demand given prices, incomes, and parameters, with bias adders at zero (note ambrosia_data defined in lines 487-489)
+
+513-529: process the ambrosia results to produce 1st round food_demand_am, renaming/adding columns, converting units, converting to long format
+
+536-540: calculate regional total demand by year, region
+
+542-547: get GCAM base year demand for staples and nonstaples
+
+549-554: calculate 1st round regional bias by subtracting observed demand from ambrosia result with no bias, and spread this bias pop subgroups by pop share (equal in our case)
+
+558-564: convert regional/decile bias units, convert to wide format
+
+569-572: calculate 2nd round demand with ambrosia, this time with bias equal to the 1st round bias by region/decile
+
+574-590: process results, as was done in 513-529
+
+595-599: calculate regional total demand, as was done in 536-540
+
+601-606: get GCAM base year demand, as was done in 542-547
+
+608-613: calculate 2nd round regional bias by subtraction, spread over deciles, as was done in 549-554
+
+615-621: calculate 3rd round demand by adding 2nd round regional/decile bias to 2nd round ambrosia demand (stored in new_base_service variable)
+
+627-631: impose minimum demand for staples, non-staples, and calculate difference from actual demand for all regions/deciles; negative values are flagged for reallocation
+
+633-658: reallocate demand from deciles that are more than 1.1 X the minimum demand to those that are below minimum demand, and do this until all deciles are at or above minimum demand
+
+My comments:
+
+This approach is not what I originally had in mind. It calculates demand by decile with zero bias, calculates bias based on that result (first for the region by comparing to the FAO data, then spreading it over deciles), then recalculates demand by decile with that non-zero bias. it then recalculates the bias (first for the region again by comparing to FAO, then spreading it over deciles), and adds it to the demand to get the final demand level by decile. 
+
+That demand by decile is what is passed to GCAM (without any bias information). GCAM then calculates a bias adder by decile for the base year by calculating demand with zero bias and subtracting from this demand passed from the data system.
+
+To me this is unlikely to make much difference to the way we were doing it before, which was the same but without the additional iteration in calculating demand. The only thing that will be different in this approach is a somewhat different distribution of demand over deciles; in both the new and old approach the demand for the region will be the same (equal to FAO). I doubt that the distribution will be significantly different. Kanishka thinks it might, and therefore will substantially reduce the problem of inconsistencies/jumps in demand when we move from the base year to the first calibrated year.
+
+To me the real issue is still that GCAM will be calculating demand in the base year with zero bias, meaning it will have the wrong elasticities (which depend on the budget shares). Instead, what should happen is that the data system should solve for the bias adders that, when passed to the demand function, make predicted demand equal to the FAO total (and regional bias can then be spread over deciles as we've been doing). Both the demand by decile and the bias adders by decile should be passed to GCAM. In the base year, GCAM can simply adopt the decile-level demand as its calibrated values, or it can calculate demand itself, passing the decile-level bias adders to the demand function. That should produce the same results. All future years in a projection should use the bias adders passed from the data system.
+
+Kanishka wants me to demonstrate what the current problem is, and whether it is reduced much by his new approach. I should do this by selecting a set of parameter values that produces a substantial difference in predicted demand in the base year in my current code, which demonstrates the initial problem, and then run it again with the new GCAM results using his new data system method.
+

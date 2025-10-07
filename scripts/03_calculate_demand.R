@@ -225,17 +225,17 @@ lapply(scen_list_demand,function(x) {
   } else if(x == "Ref_ML_gcam_ens_bc") {
     
     # modifications for small test runs
-#    param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
-#    param_data_FE_clean_sub <-
-#      subset(param_data_FE_clean_sub,
-#             iteration %in% param_data_global_clean_sub$iteration)
-#    reg_list <- c(2:4)
+   param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
+   param_data_FE_clean_sub <-
+     subset(param_data_FE_clean_sub,
+            iteration %in% param_data_global_clean_sub$iteration)
+   reg_list <- c(11)
     
     food.dmnd.ens_bc(
       globalparams = param_data_global_clean_sub,
       regparams = param_data_FE_clean_sub,
       inputdata = gcamoutput_Ref_ML,
-      regions = reg_list,
+      regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
       case = "ens_bc",       # file ext: bias corrected ensemble
@@ -246,19 +246,37 @@ lapply(scen_list_demand,function(x) {
       impose_min = TRUE,
       save_result = TRUE
     )
+
+    load("data/raw/GCAM_region_ID_mapping.Rdata")
     
-    # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc_6jul.RDS",
-    #                      sep = "/")) %>%
-    #   filter(year == 2015) %>% pull(RBs)
-    # plot(tmp$Y, tmp$Qs)
+    iterationML <- params_ML_intervals_global %>% 
+      filter(measure == "ML") %>% 
+      pull(iteration)
+    
+    tmpR2 <- readRDS(paste("data/processed",procdata_dir,
+                         "Ref_ML_gcam/demand_ens_bc_12jul25/demand_R2_ens_bc.RDS",
+                         sep = "/")) %>%
+      filter(year == 2015, iteration == iterationML)
+    tmpR3 <- readRDS(paste("data/processed",procdata_dir,
+                           "Ref_ML_gcam/demand_ens_bc_12jul25/demand_R3_ens_bc.RDS",
+                           sep = "/")) %>%
+      filter(year == 2015, iteration == iterationML)
+    tmpR28 <- readRDS(paste("data/processed",procdata_dir,
+                           "Ref_ML_gcam/demand_ens_bc_12jul25/demand_R28_ens_bc.RDS",
+                           sep = "/")) %>%
+      filter(year == 2015, iteration == iterationML)
+    write.csv(bind_rows(tmpR2, tmpR3, tmpR28), file = "baseyr_bias_corrected_toKanishka.csv")
 #
     # check results: shows that newly calculated demand is correctly bias corrected
     # to the 2015 regional results in the reference scenario (demand_ref below)
-    # selected_cols <- c("Qs.region", "Qn.region")
-    # tmp <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc_6jul.RDS",
-    #               sep = "/")) %>%
-    #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
-    #   summarise(across(all_of(selected_cols), list(median = median, range = ~ list(range(.)))))
+    selected_cols <- c("Qs.region", "Qn.region")
+    procdata_subdir <- "ens_bc_20250804_105557"
+    filename <- "demand_R11_ens_bc.RDS"
+    
+    tmp <- readRDS(paste("data/processed", procdata_dir, "Ref_ML_gcam", procdata_subdir, 
+                         filename, sep = "/")) %>%
+      filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
+      summarise(across(all_of(selected_cols), list(median = median, range = ~ list(range(.)))))
     # tmp1 <- readRDS(paste("data/processed",procdata_dir,"Ref_ML_gcam/demand_R2_ens_bc_10jun.RDS",
     #                      sep = "/")) %>% 
     #   filter(year == 2015, `gcam-consumer` == "FoodDemand_Group1") %>%
