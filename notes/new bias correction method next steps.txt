@@ -1,0 +1,14 @@
+what if instead we change the food.dmnd function to impose the min demand constraint, rather than doing it ourselves after the fact? then within that function we could order the two constraints: first impose the budget constraint on a given decile, to adjust its food consumption down if it is spending too much, then checking to make sure it was not adjusted too far down (below the min threshold), and if so boosting it back up and allowing the budget constraint to be violated.
+
+the benefit would be that this would ensure that the min demand constraint was applied in all future years, not just in the base year. In future years it could be an issue if, eg, a poor household in the base year has its food consumption adjusted up to meet the minimum, but then in the first projected year it is still too poor to meet the minimum, the constraint is not imposed, and therefore its consumption is below the threshold
+
+the way the calibration would work, in the base year: 
+1) guess a per cap regional bias adder
+2) include this adder in the demand function call for each decile (ie adder applied equally, and min threshold applied)
+3) calculate regional demand as the average of the decile per capita demands
+4) check regional demand against observed value, and adjust regional bias adder if necessary
+5) repeat to convergence
+
+once convergence is reached, this regional bias adder could be used for all future years, where it would be added equally across deciles, but then decile demand would be adjusted in the demand function to meet the threshold (implicitly changing the bias adders, but not necessary to calculate explicitly)
+
+I am now ready to implement this method in its own subfunction to the food.dmnd.ens_bc() function, making the appropriate change to the food.dmnd function in ambrosia

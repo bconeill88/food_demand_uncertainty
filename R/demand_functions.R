@@ -57,8 +57,9 @@ calc_price_elast <- function(food_demand,param_structure) {
 # if scen = "Obs" (calculating demand based on observed prices/income) or
 # save_results = FALSE, results for the single region calculated are returned,
 # not saved
-food.dmnd.wrapper <- function(globalparams, regparams, biasdata, inputdata, regions, 
-                              output_dir, scen, case, save_result = TRUE) {
+food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
+                              inputdata, regions, output_dir, scen, case, 
+                              save_result = TRUE) {
   
   message("  calculating demand for scenario ", scen, ", case ", case)
 
@@ -139,7 +140,8 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, inputdata, regi
                                    NULL, # rgn argument, not needed
                                    regparams_reg_iter$staples_FE, 
                                    biasdata_reg_iter$RBs, 
-                                   biasdata_reg_iter$RBn) # %>%
+                                   biasdata_reg_iter$RBn,
+                                   Qs_min, Qn_min) # %>%
       
       demand_reg_iter <- demand_reg_iter %>%
         
@@ -245,6 +247,8 @@ get_bias_terms_subtract <- function(demand_ref_baseyr, globalparams, regparams,
     globalparams = globalparams,
     regparams = regparams,
     biasdata = bias_terms_zero,
+    Qs_min = Qs_min,
+    Qn_min = Qn_min,
     inputdata = inputdata_baseyr,
     regions = regions,
     output_dir = output_dir,
@@ -267,53 +271,56 @@ get_bias_terms_subtract <- function(demand_ref_baseyr, globalparams, regparams,
     select(iteration, GCAM_region_ID, region, `gcam-consumer`, RBs, RBn) %>%
     distinct()
   
+  # This impose_min branch is not needed if we keep the modification of the food.dmnd
+  # function to impose minimum consumption there
+  #
   # adjust the bias adders across deciles if necessary to impose minimum consumption
-  if(impose_min) {
-    
-    # Calculate base year demand with region-specific bias terms
-    demand_regBias_baseyr <- food.dmnd.wrapper(
-      globalparams = globalparams,
-      regparams = regparams,
-      biasdata = bias_terms_reg,
-      inputdata = inputdata_baseyr,
-      regions = regions,
-      output_dir = output_dir,
-      scen = scen,
-      case = "regBias",       # provide case so progress message is informative
-      save_result = FALSE)   # don't save result, return it
-    
-    # Apply minimum demand constraint to all deciles in base year
-    demand_regBias_baseyr_mindemand <- map_dfr(
-      split(demand_regBias_baseyr, f = demand_regBias_baseyr$region),
-      ~ apply_min_demand_refscen_baseyr(.x, Qs_min, Qn_min, alloc_thresh)
-    )
-    
-    # Calculate decile-specific bias term adjustments
-    bias_terms_decile_adjust <- 
-      inner_join(demand_regBias_baseyr_mindemand, demand_regBias_baseyr,
-                 by = c("GCAM_region_ID", "region", "gcam-consumer", "year", "iteration"),
-                 suffix = c(".noMin", ".wMin")) %>%
-      mutate(RBs_adj = Qs.wMin - Qs.noMin,
-             RBn_adj = Qn.wMin - Qn.noMin) %>%
-      # keep only what we need for regional bias adjustment terms
-      select(iteration, GCAM_region_ID, region, `gcam-consumer`, RBs_adj, RBn_adj) %>%
-      distinct()
-    
-    # Calculate bias terms adjusted for minimum demand
-    bias_terms <- 
-      inner_join(bias_terms_reg, bias_terms_decile_adjust,
-                 by = c("GCAM_region_ID", "region", "iteration", "gcam-consumer"),
-                 suffix = c(".reg", ".adj")) %>%
-      mutate(RBs = RBs - RBs_adj,
-             RBn = RBn - RBn_adj) %>%
-      # keep only what we need for regional bias adjustment terms
-      select(GCAM_region_ID, region, `gcam-consumer`, iteration, RBs, RBn) %>%
-      distinct()
-    
-  } else {
-    
-    bias_terms <- bias_terms_reg
-  }
+  # if(impose_min) {
+  #   
+  #   # Calculate base year demand with region-specific bias terms
+  #   demand_regBias_baseyr <- food.dmnd.wrapper(
+  #     globalparams = globalparams,
+  #     regparams = regparams,
+  #     biasdata = bias_terms_reg,
+  #     inputdata = inputdata_baseyr,
+  #     regions = regions,
+  #     output_dir = output_dir,
+  #     scen = scen,
+  #     case = "regBias",       # provide case so progress message is informative
+  #     save_result = FALSE)   # don't save result, return it
+  #   
+  #   # Apply minimum demand constraint to all deciles in base year
+  #   demand_regBias_baseyr_mindemand <- map_dfr(
+  #     split(demand_regBias_baseyr, f = demand_regBias_baseyr$region),
+  #     ~ apply_min_demand_refscen_baseyr(.x, Qs_min, Qn_min, alloc_thresh)
+  #   )
+  #   
+  #   # Calculate decile-specific bias term adjustments
+  #   bias_terms_decile_adjust <- 
+  #     inner_join(demand_regBias_baseyr_mindemand, demand_regBias_baseyr,
+  #                by = c("GCAM_region_ID", "region", "gcam-consumer", "year", "iteration"),
+  #                suffix = c(".noMin", ".wMin")) %>%
+  #     mutate(RBs_adj = Qs.wMin - Qs.noMin,
+  #            RBn_adj = Qn.wMin - Qn.noMin) %>%
+  #     # keep only what we need for regional bias adjustment terms
+  #     select(iteration, GCAM_region_ID, region, `gcam-consumer`, RBs_adj, RBn_adj) %>%
+  #     distinct()
+  #   
+  #   # Calculate bias terms adjusted for minimum demand
+  #   bias_terms <- 
+  #     inner_join(bias_terms_reg, bias_terms_decile_adjust,
+  #                by = c("GCAM_region_ID", "region", "iteration", "gcam-consumer"),
+  #                suffix = c(".reg", ".adj")) %>%
+  #     mutate(RBs = RBs - RBs_adj,
+  #            RBn = RBn - RBn_adj) %>%
+  #     # keep only what we need for regional bias adjustment terms
+  #     select(GCAM_region_ID, region, `gcam-consumer`, iteration, RBs, RBn) %>%
+  #     distinct()
+  #   
+  # } else {
+  #   
+  #   bias_terms <- bias_terms_reg
+  # }
 }
 
 # Function to calculate food demand for an ensemble of parameter values, with each
@@ -367,7 +374,7 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
     alloc_thresh = alloc_thresh,
     impose_min = impose_min)
   
-  # here, write function for alterantive approach to deriving bias adders
+  # here, write function for alternative approach to deriving bias adders
   # get_bias_terms_solve()
   
   # at this point, I could just calculate demand with the bias terms that have been
@@ -390,12 +397,14 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
     globalparams = globalparams,
     regparams = regparams,
     biasdata = bias_terms,
+    Qs_min = Qs_min,
+    Qn_min = Qn_min,
     inputdata = inputdata %>% filter(year >= baseyr),
     regions = regionIDs,
     output_dir = output_dir,
     scen = scen,
     case = case,       
-    save_result = FALSE) # save_result)           # save results to files
+    save_result = save_result)
 }
 
 

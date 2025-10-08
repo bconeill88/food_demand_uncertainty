@@ -229,7 +229,7 @@ lapply(scen_list_demand,function(x) {
    param_data_FE_clean_sub <-
      subset(param_data_FE_clean_sub,
             iteration %in% param_data_global_clean_sub$iteration)
-   reg_list <- c(11)
+   reg_list <- c(2)
     
     food.dmnd.ens_bc(
       globalparams = param_data_global_clean_sub,
@@ -243,7 +243,7 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
+      impose_min = FALSE,   # this should always be FALSE, eliminate it when sure of new dmnd function
       save_result = TRUE
     )
 
@@ -267,6 +267,15 @@ lapply(scen_list_demand,function(x) {
       filter(year == 2015, iteration == iterationML)
     write.csv(bind_rows(tmpR2, tmpR3, tmpR28), file = "baseyr_bias_corrected_toKanishka.csv")
 #
+    tmpR2_old <- readRDS(paste("data/processed",procdata_dir,
+                           "Ref_ML_gcam/ens_bc_20251008_103435/demand_R2_ens_bc.RDS",
+                           sep = "/")) # %>%
+ #      filter(year == 2015, iteration == iterationML)
+    tmpR2_new <- readRDS(paste("data/processed",procdata_dir,
+                                "Ref_ML_gcam/ens_bc_20251008_103517/demand_R2_ens_bc.RDS",
+                                sep = "/")) # %>%
+ #     filter(year == 2015, iteration == iterationML)
+    
     # check results: shows that newly calculated demand is correctly bias corrected
     # to the 2015 regional results in the reference scenario (demand_ref below)
     selected_cols <- c("Qs.region", "Qn.region")
