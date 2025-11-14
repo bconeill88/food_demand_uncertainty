@@ -16,10 +16,10 @@ scen_amb <- "Ref_ML_gcam"
 
 # Define data directories
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir_ens_bc <- "demand_ens_bc_12jul25"
-procdata_subdir_MLscen <- "MLparams_bc_20250711_163345"
-procdata_subdir_HDscen <- "HDparams_bc_20250711_163827"
-procdata_subdir_LDscen <- "LDparams_bc_20250711_164000"
+procdata_subdir_ens_bc <- "ens_bc_20251009_221027"
+procdata_subdir_MLscen <- "MLparams_bc_20251028_092955"
+procdata_subdir_HDscen <- "HDparams_bc_20251028_093125"
+procdata_subdir_LDscen <- "LDparams_bc_20251028_093042"
 output_dir <- file.path("output", "reports", procdata_dir, scen_amb, procdata_subdir_ens_bc)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -48,7 +48,7 @@ demand_LDscen <- readRDS(file.path("data", "processed", procdata_dir, "Ref_ML_gc
 if(FALSE) {
   
 # Plot single region example, regional total results
-example_region <- 3
+example_region <- 11
 demand_path_ens_bc <- file.path("data", "processed", procdata_dir, scen_amb, procdata_subdir_ens_bc, 
                          paste0("demand_R", example_region, "_ens_bc.RDS"))
 demand_reg_ens_bc <- readRDS(demand_path_ens_bc)
@@ -59,47 +59,62 @@ p_single <- plot_regional_demand_comparison(
   reg_num = example_region,
   sample_n = 100,
   ensemble_name = "Emulator",
-  include_comparison_scenarios = FALSE
+  scen_solid = demand_MLscen, scen_solid_name = "GCAM ML",
+  scen_dashed = demand_HDscen, scen_dashed_name = "GCAM HD",
+  scen_dotted = demand_LDscen, scen_dotted_name = "GCAM LD",
+  scen_model = "gcam"               # options: "gcam", "amb"
 )
 ggsave(file.path(output_dir, paste0("demand_R", example_region, "_ens_bc.png")),
        plot = p_single, width = 11, height = 4, units = "in", bg = "white")
 
-p_single_GCAMcompare <- plot_regional_demand_comparison(
-  demand_reg = demand_reg_ens_bc,
-  reg_num = example_region,
-  sample_n = 100,
-  ensemble_name = "Emulator",
-  scen_solid = demand_MLscen, scen_solid_name = "GCAM ML",
-  scen_dashed = demand_HDscen, scen_dashed_name = "GCAM HD",
-  scen_dotted = demand_LDscen, scen_dotted_name = "GCAM LD",
-  scen_model = "gcam",               # options: "gcam", "amb"
-  include_comparison_scenarios = TRUE
-)
-ggsave(file.path(output_dir, paste0("demand_R", example_region, "_ens_bc_GCAMcompare.png")),
-       plot = p_single_GCAMcompare, width = 11, height = 4, units = "in", bg = "white")
-
 }
 
 # Plot all regions, regional total results
-p_all_regional <- map_dfr(region_list, function(region_id) {
+p_all_regional <- purrr::map_dfr(region_list, function(region_id) {
   demand_path_ens_bc <- file.path("data", "processed", procdata_dir, scen_amb, procdata_subdir_ens_bc,
                                   paste0("demand_R", region_id, "_ens_bc.RDS"))
   demand_reg_ens_bc <- readRDS(demand_path_ens_bc)
-#  freq_table <- max_iters_all %>% filter(GCAM_region_ID == region_id)
 
   plot_regional_demand_comparison(
     demand_reg = demand_reg_ens_bc,
     reg_num = region_id,
     sample_n = 100,
     ensemble_name = "Emulator",
-    scen_solid = demand_MLscen, scen_solid_name = "GCAM ML",
+    scen_solid  = demand_MLscen, scen_solid_name  = "GCAM ML",
     scen_dashed = demand_HDscen, scen_dashed_name = "GCAM HD",
     scen_dotted = demand_LDscen, scen_dotted_name = "GCAM LD",
-    scen_model = "gcam",               # options: "gcam", "amb"
+    scen_model = "both",                 # <- NEW
+    include_comparison_scenarios = TRUE,
     return_data = TRUE
   )
 })
-plot_regional_demand_comparison_pdf(p_all_regional, region_mapping = GCAM_region_ID_mapping, output_dir = output_dir)
+
+plot_regional_demand_comparison_pdf(
+  p_all_regional,
+  region_mapping = GCAM_region_ID_mapping,
+  output_dir = output_dir
+)
+
+# p_all_regional <- map_dfr(region_list, function(region_id) {
+#   demand_path_ens_bc <- file.path("data", "processed", procdata_dir, scen_amb, procdata_subdir_ens_bc,
+#                                   paste0("demand_R", region_id, "_ens_bc.RDS"))
+#   demand_reg_ens_bc <- readRDS(demand_path_ens_bc)
+#  freq_table <- max_iters_all %>% filter(GCAM_region_ID == region_id)
+# 
+#   plot_regional_demand_comparison(
+#     demand_reg = demand_reg_ens_bc,
+#     reg_num = region_id,
+#     sample_n = 100,
+#     ensemble_name = "Emulator",
+#     scen_solid = demand_MLscen, scen_solid_name = "GCAM ML",
+#     scen_dashed = demand_HDscen, scen_dashed_name = "GCAM HD",
+#     scen_dotted = demand_LDscen, scen_dotted_name = "GCAM LD",
+#     scen_model = "amb",               # options: "gcam", "amb"
+#     include_comparison_scenarios = TRUE,
+#     return_data = TRUE
+#   )
+# })
+# plot_regional_demand_comparison_pdf(p_all_regional, region_mapping = GCAM_region_ID_mapping, output_dir = output_dir)
 
 if(FALSE) {
   

@@ -1,5 +1,6 @@
-# identify and save uncertainty intervals for demand and elasticities ----------
-# ----
+# Identify and save uncertainty in demand and elasticities based on parameter sets
+# identified as representing uncertainty intervals in the parameter distributions 
+# in 02_parameter_uncertainty_intervals.R.
 
 # load functions
 source("R/demand_interval_functions.R")
@@ -29,7 +30,9 @@ if (length(args) > 0) {
   reg_list <- c(1:29,31,32) # skip Taiwan, no post-2015 output from GCAM
 }
 
-# load needed file; stored in params_ML_intervals_global
+# load file containing params_ML_intervals_global data frame, which contains
+# ML parameters and parameter sets representing confidence intervals of the parameters
+# as estimated by the MCMC routine
 load(paste0("data/processed/",procdata_dir,"/params_ML_intervals_global.RData"))
 
 # identify ML, calculate independent and identify joint uncertainty intervals for

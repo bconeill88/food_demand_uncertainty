@@ -1,4 +1,6 @@
-# calculate and save parameters associated with demand uncertainty intervals 
+# Identify and save parameter sets that correspond to intervals in demand outcomes
+# representing uncertainty space (e.g., representing the top 5% of demand outcomes,
+# or bottom 5%, etc.)
 
 # load functions
 source("R/parameters_for_intervals_functions.R")
@@ -9,7 +11,7 @@ ensure_package(tidyverse)
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir <- "demand_ens_bc_12jul25"
+procdata_subdir <- "ens_bc_20251009_221027"
 scen <- "Ref_ML_gcam"
 data_path <- file.path("data", "processed", procdata_dir, scen, procdata_subdir)
 
@@ -128,3 +130,27 @@ write.csv(
   params_FE_Qtot, 
   file.path(data_path, "params_FE_HDLD_Qtot.csv"), row.names = FALSE)
 
+# load files for manual inspection and writing results for Kanishka to use in GCAM
+# manually inspect this file to confirm that Qtot iterations are the best ones to 
+# use for HD, LD parameters
+max_freq_table <- readRDS(file.path(data_path, "table_max_frequencies_all_regions.RDS"))
+# identify iteration numbers that correspond to desired HD and LD parameter sets; 
+# region ID 33 represents iteration that does the best for the world rather than a single region
+iter_table <- read_csv(file.path(data_path,"iter_table_HDLD_Qtot.csv"))
+iter_HDLD_Qtot_world <- iter_table %>% filter(ID == 33) %>% select(HD_Qtot, LD_Qtot)
+# load global and FE parameters, then extract HD and LD parameter sets
+params_global_Qtot <- read_csv(file.path(data_path,"params_global_HDLD_Qtot.csv"),
+                               show_col_types = FALSE)
+params_FE_Qtot <- read_csv(file.path(data_path,"params_FE_HDLD_Qtot.csv"),
+                           show_col_types = FALSE)
+params_global_Qtot_world <- params_global_Qtot %>% 
+  filter(iteration %in% iter_HDLD_Qtot_world[1,])
+params_FE_Qtot_world <- params_FE_Qtot %>% 
+  filter(iteration %in% iter_HDLD_Qtot_world[1,])
+# write these parameter sets to files for Kanishka
+write.csv(
+  params_global_Qtot_world, 
+  file.path(data_path, "params_global_HDLD_Qtot_world.csv"), row.names = FALSE)
+write.csv(
+  params_FE_Qtot_world, 
+  file.path(data_path, "params_FE_HDLD_Qtot_world.csv"), row.names = FALSE)

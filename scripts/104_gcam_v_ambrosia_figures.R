@@ -1,4 +1,6 @@
-# plots and analysis of ambrosia v gcam results
+# Combines GCAM and ambrosia results for specific scenarios and saves them to files;
+# creates scatter plots comparing various results between the two scenarios and saves
+# them as pdfs
 
 # Load libraries
 library(tidyverse)
@@ -10,11 +12,12 @@ source("R/min_calorie_adjustment.R")
 
 # define sub-directories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir_RefML_MLparams <- "MLparams_bc_20250711_154124"
-procdata_subdir_RefML_HDparams <- "HDparams_bc_20250711_154150"
-procdata_subdir_RefML_LDparams <- "LDparams_bc_20250711_154158"
-procdata_subdir_RefHD_HDparams <- "HDparams_bc_20250711_154133"
-procdata_subdir_RefLD_LDparams <- "LDparams_bc_20250711_154141"
+procdata_subdir_ens_bc <- "ens_bc_20251009_221027"
+procdata_subdir_RefML_MLparams <- "MLparams_bc_20251028_092955"
+procdata_subdir_RefML_HDparams <- "HDparams_bc_20251028_093125"
+procdata_subdir_RefML_LDparams <- "LDparams_bc_20251028_093042"
+procdata_subdir_RefHD_HDparams <- "HDparams_bc_20251028_093223"
+procdata_subdir_RefLD_LDparams <- "LDparams_bc_20251028_093306"
 gcam_results_dir <- "results_gcam"
 
 # define regions to run over
@@ -28,7 +31,7 @@ reg_list = c(1:29, 31, 32) # skip Taiwan (region 30), no future projections
 # load ML and HD/LD parameter data including iteration #s
 load(file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RData"))
 iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam",
-                                      "iter_table_HDLD_Qtot.csv"))
+                                      procdata_subdir_ens_bc, "iter_table_HDLD_Qtot.csv"))
 
 # identify iterations associated with ML and global HD and LD parameters
 iter_ML <- params_ML_intervals_global[params_ML_intervals_global$measure == "ML", "iteration"]
@@ -60,6 +63,21 @@ if(combine_new_results) {
   gcamoutput_Ref_LD <-
     readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
                       "gcamoutput_Ref_LD.RDS"))
+  
+  # modify gcam results by replacing bias terms with results sent separately by Kanishka; 
+  # done Oct 17 2025 since most recent gcam results did not include correct bias
+  # terms
+  gcam_bias_ML <- read_csv("H:/My Drive/R projects/food_demand/food_demand_uncertainty/notes/pc_bias_tableML.csv")
+  gcam_bias_HD <- read_csv("H:/My Drive/R projects/food_demand/food_demand_uncertainty/notes/pc_bias_tableHD_Qtot.csv")
+  
+  gcamoutput_Ref_ML <- merge(gcamoutput_Ref_ML, gcam_bias_ML, by = "region") %>%
+    mutate(RBs = bias_adder_staples,
+           RBn = bias_adder_nonstaples) %>%
+    select(-bias_adder_staples, -bias_adder_nonstaples)
+  gcamoutput_Ref_HD <- merge(gcamoutput_Ref_HD, gcam_bias_ML, by = "region") %>%
+    mutate(RBs = bias_adder_staples,
+           RBn = bias_adder_nonstaples) %>%
+    select(-bias_adder_staples, -bias_adder_nonstaples)
   
   # ambrosia results
   # for Ref_ML, select from the bias-corrected ensemble 
@@ -317,11 +335,12 @@ if (FALSE) {
   # note that Kanishka suggests these are likely cases where the GCAM result was
   # zero but it wrote out NA to avoid divide by zero errors; this is consistent with 
   # the fact that the ambrosia results in these cases are zero or v close to zero
-  gcam_amb_output_Ref_ML %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam))
+  gcam_amb_output_Ref_ML %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam))-> gcam_amb_output_Ref_ML_NAs
   gcam_amb_output_Ref_HD %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam)) -> gcam_amb_output_Ref_HD_NAs
+  gcam_amb_output_Ref_LD %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam)) -> gcam_amb_output_Ref_LD_NAs
   gcam_amb_output_Ref_ML_HDparams %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam)) -> gcam_amb_output_Ref_ML_HDparams_NAs
-  gcam_amb_output_Ref_ML_HDparams %>% filter(if_any(everything(), is.na)) -> gcam_amb_output_Ref_ML_HDparams_NAs
-
+  gcam_amb_output_Ref_ML_LDparams %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam)) -> gcam_amb_output_Ref_ML_LDparams_NAs
+  
   # save to send to Kanishka
   saveRDS(gcam_amb_output_Ref_ML_HDparams,
           file=paste("data/processed",procdata_dir,
@@ -407,8 +426,14 @@ if (FALSE) {
   tmpLD <- gcam_amb_output_Ref_LD %>% filter(is.na(Qs_gcam) | is.na(Qn_gcam))
   
   
-  gcam_amb_output_Ref_HD %>% filter(Qn_amb < -5 & year > 1975)
-  gcam_amb_output_Ref_LD %>% filter(Qs_gcam > 6 & year > 1975)
+  gcam_amb_output_Ref_HD %>% filter(Qs_amb < 0.7 & year > 2015)
+  gcam_amb_output_Ref_HD %>% filter(Qn_amb < 0.1 & year > 2015)
+  gcam_amb_output_Ref_HD %>% filter(Qs_gcam > 1.63 & Qs_gcam < 1.7 & year > 2015) -> tmp
+  gcam_amb_output_Ref_HD %>% filter(Qs.region_amb < 1.45 & Qs.region_gcam > 1.45 & year > 2015) -> tmp2
+  
+  gcam_amb_output_Ref_LD %>% filter(Qs.region_amb/Qs.region_gcam > 1.05 | 
+                                      Qs.region_amb/Qs.region_gcam < 0.95) -> tmp
+  
   
   gcam_amb_output_Ref_HD %>% filter(alpha.s + alpha.n > 0.5, year > 1975)
   gcam_amb_output_Ref_HD %>% filter(alpha.s + alpha.n > 0.5)

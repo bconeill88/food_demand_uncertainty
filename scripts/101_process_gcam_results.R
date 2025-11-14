@@ -1,10 +1,10 @@
 # produces GCAM scenario outcomes suitable for use as input to ambrosia and for
 # comparison with ambrosia results;
-# reads GCAM results from rgcam output provided by Kanishka, extracts needed
-# variables, calculates per capita income by decile (since direct GCAM output
-# for this variable is incorrect) from separate data on regional decile
-# income shares, calculates consumption shares and regional demand, and saves 
-# result as a dataframe
+# reads GCAM results from rgcam output (in data/raw/final_rgcam_outputs) provided 
+# by Kanishka, extracts needed variables, calculates per capita income by decile 
+# (since direct GCAM output for this variable is incorrect) from separate data on 
+# regional decile income shares, calculates consumption shares and regional demand, 
+# and saves result as a dataframe (in data/processed/<procdata_dir>/results_gcam)
 
 # reminder this is what works to install rgcam, not the github instructions
 # need Rtools installed first
@@ -21,21 +21,22 @@ source("R/gcam_results_function.R")
 
 # define sub-directories of data/processed or data/raw to use
 gcam_rawdata_dir <- "final_rgcam_outputs"
+gcam_rawdata_subdir <- "tables_24oct25"
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
 gcam_results_dir <- "results_gcam"
 
 # load GCAM scenario results: Kanishka's rgcam query results using rgcam function; 
 # assign to names indicating GCAM scenario first, then parameters used in the GCAM run
-prj_Ref_ML <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_ML.proj",sep="/"))
-# prj_HP_ML <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_MLHipricecond.proj",sep="/"))
-prj_Ref_HD <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_HiDemand.proj",sep="/"))
-# prj_Ref_HPR <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_Hi_price.proj",sep="/"))
-# prj_HP_HPR <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_HipriceHipricecond.proj",sep="/"))
-prj_Ref_LD <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_LoDemand.proj",sep="/"))
-# prj_Ref_LPR <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_Lo_price.proj",sep="/"))
-# prj_HP_LPR <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_LopriceHipricecond.proj",sep="/"))
-# prj_Ref_GCAM7 <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_Ref.proj",sep="/"))
-# prj_HP_GCAM7 <- loadProject(paste("data/raw",gcam_rawdata_dir,"tables_RefHipricecond.proj",sep="/"))
+prj_Ref_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_ML.proj"))
+# prj_HP_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_MLHipricecond.proj"))
+prj_Ref_HD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HiDemand.proj"))
+# prj_Ref_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Hi_price.proj"))
+# prj_HP_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HipriceHipricecond.proj"))
+prj_Ref_LD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_LoDemand.proj"))
+# prj_Ref_LPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Lo_price.proj"))
+# prj_HP_LPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_LopriceHipricecond.proj"))
+# prj_Ref_GCAM7 <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Ref.proj"))
+# prj_HP_GCAM7 <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_RefHipricecond.proj"))
 
 # get and clean income share data
 inc_share_data <- read.csv(file.path("data", "raw", gcam_rawdata_dir, "incomes.csv")) %>%

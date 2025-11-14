@@ -28,19 +28,19 @@ if (Sys.info()["nodename"] == "WF10681") {
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir <- "Ref_ML_gcam/ens_bc_20251009_221027"
 gcam_results_dir <- "results_gcam"
 
 # define list of scenarios to run
 scen_list_demand <- 
-#  list("Ref_ML_gcam_MLparams_bc")
-#  list("Ref_ML_gcam_LDparams_bc")
+#  list("Ref_ML_gcam_bc")
 #  list("Ref_ML_gcam_HDparams_bc")
-#  list("Ref_LD_gcam_LDparams_bc")
-#  list("Ref_HD_gcam_HDparams_bc")
-#  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
- list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
-      "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
+#  list("Ref_ML_gcam_LDparams_bc")
+#  list("Ref_ML_gcam_bc", "Ref_HD_gcam_bc", "Ref_LD_gcam_bc", 
+#       "Ref_ML_gcam_HDparams_bc", "Ref_ML_gcam_LDparams_bc")
+  list("Ref_ML_gcam_ens_bc")
+#  list("Ref_HD_gcam_ens_bc")
+#  list("Ref_LD_gcam_ens_bc")
+#  list("Ref_ML_gcam_ens_bc", "Ref_HD_gcam_ens_bc", "Ref_LD_gcam_ens_bc") 
 
 # define regions to run over
 # get command line arguments
@@ -66,25 +66,25 @@ gcamoutput_Ref_LD <- readRDS(file.path("data", "processed", procdata_dir,
 
 # load parameter files
 
-# ensembles of parameters from MCMC; files read in are produced by running 01_clean_data.R
+# ensembles of parameters from MCMC
 load(file.path("data", "processed", procdata_dir, "inputs", "param_data_global_clean_sub.RData"))
 load(file.path("data", "processed", procdata_dir, "inputs", "param_data_FE_clean_sub.RData"))
 
-# ML parameter values; files read in are produced by running 02_parameter_uncertainty_intervals.R
+# ML parameter values
 load(file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RData"))
 load(file.path("data", "processed", procdata_dir, "params_ML_intervals_FE.RData"))
 
-# HD/LD parameter values; files read in are produced by running 07_params_for_intervals.R
-params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                         "params_global_HDLD_Qtot.csv"))
-params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                         "params_FE_HDLD_Qtot.csv"))
-iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                      "iter_table_HDLD_Qtot.csv"))
-
-# identify iterations associated with global HD and LD parameters
-iter_HD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "HD_Qtot"]
-iter_LD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "LD_Qtot"]
+# # HD/LD parameter values
+# params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam",
+#                                          "params_global_HDLD_Qtot.csv"))
+# params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam",
+#                                          "params_FE_HDLD_Qtot.csv"))
+# iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam",
+#                                       "iter_table_HDLD_Qtot.csv"))
+# 
+# # identify iterations associated with global HD and LD parameters
+# iter_HD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "HD_Qtot"]
+# iter_LD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "LD_Qtot"]
 
 # calculate demand and elasticities for the subsample parameter iterations, for all
 # regions given a dataframe of income and prices, saves regional results, for each
@@ -124,13 +124,13 @@ lapply(scen_list_demand,function(x) {
 
   # single GCAM scenarios
 
-  } else if(x == "Ref_ML_gcam_MLparams_bc") {
+  } else if(x == "Ref_ML_gcam_bc") {
 
     food.dmnd.ens_bc(
       globalparams = params_ML_intervals_global %>% filter(measure == "ML"),
       regparams = params_ML_intervals_FE %>% filter(measure == "ML"),
       inputdata = gcamoutput_Ref_ML,
-      regionIDs = reg_list,
+      regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
       case = "MLparams_bc",
@@ -138,7 +138,7 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
+      impose_min = TRUE,
       save_result = TRUE)
     
     # check against GCAM base year results
@@ -159,7 +159,7 @@ lapply(scen_list_demand,function(x) {
       globalparams = params_HDLD_global %>% filter(iteration == iter_HD),
       regparams = params_HDLD_FE %>% filter(iteration == iter_HD),
       inputdata = gcamoutput_Ref_ML,
-      regionIDs = reg_list,
+      regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
       case = "HDparams_bc",
@@ -167,7 +167,7 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
+      impose_min = TRUE,
       save_result = TRUE)
 
   } else if(x == "Ref_ML_gcam_LDparams_bc") {
@@ -176,7 +176,7 @@ lapply(scen_list_demand,function(x) {
       globalparams = params_HDLD_global %>% filter(iteration == iter_LD),
       regparams = params_HDLD_FE %>% filter(iteration == iter_LD),
       inputdata = gcamoutput_Ref_ML,
-      regionIDs = reg_list,
+      regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
       case = "LDparams_bc",
@@ -184,16 +184,16 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
+      impose_min = TRUE,
       save_result = TRUE)
     
-  } else if(x == "Ref_HD_gcam_HDparams_bc") {
+  } else if(x == "Ref_HD_gcam_bc") {
     
     food.dmnd.ens_bc(
       globalparams = params_HDLD_global %>% filter(iteration == iter_HD),
       regparams = params_HDLD_FE %>% filter(iteration == iter_HD),
       inputdata = gcamoutput_Ref_HD,
-      regionIDs = reg_list,
+      regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_HD_gcam",
       case = "HDparams_bc",
@@ -201,54 +201,16 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
+      impose_min = TRUE,
       save_result = TRUE)
     
-    # plot comparison of variants of HD scenario
-    if(FALSE) {
-      
-      HD_base <- readRDS(file.path("data", "processed", procdata_dir, "Ref_HD_gcam",
-                                   "HDparams_bc_20251021_093840", 
-                                   "demand_R2_HDparams_bc.RDS"))
-      HD_shares <- readRDS(file.path("data", "processed", procdata_dir, "Ref_HD_gcam",
-                                   "HDparams_bc_shares_20251022_093208", 
-                                   "demand_R2_HDparams_bc_shares.RDS"))
-      HD_scale <- readRDS(file.path("data", "processed", procdata_dir, "Ref_HD_gcam",
-                                     "HDparams_bc_shares_scale_20251022_093658", 
-                                    "demand_R2_HDparams_bc_shares_scale.RDS"))
-      
-      library(ggplot2)
-
-      # Combine into one long data frame with an identifier
-      df_all <- bind_rows(
-        HD_base  %>% filter(`gcam-consumer` == "FoodDemand_Group1") %>% mutate(source = "Base"),
-        HD_shares %>% filter(`gcam-consumer` == "FoodDemand_Group1") %>% mutate(source = "Shares"),
-        HD_scale %>% filter(`gcam-consumer` == "FoodDemand_Group1") %>% mutate(source = "Scale")
-      )
-      
-      # Reshape to long format for faceting by variable
-      df_long <- df_all %>%
-        select(Y, Qs, Qn, source) %>%
-        pivot_longer(cols = c(Qs, Qn), names_to = "food_type", values_to = "demand")
-      
-      # Single plot with two panels (Qs and Qn)
-      p <- ggplot(df_long, aes(x = Y, y = demand, color = source)) +
-        geom_point(size = 2) +
-        facet_wrap(~ food_type, scales = "free_y") +
-        labs(x = "Income (Y)", y = "Demand", color = "Dataset",
-             title = "Staples and Non-Staples Demand vs Income") +
-        theme_minimal()
-      
-      p
-    }
-    
-  } else if(x == "Ref_LD_gcam_LDparams_bc") {
+  } else if(x == "Ref_LD_gcam_bc") {
     
     food.dmnd.ens_bc(
       globalparams = params_HDLD_global %>% filter(iteration == iter_LD),
       regparams = params_HDLD_FE %>% filter(iteration == iter_LD),
       inputdata = gcamoutput_Ref_LD,
-      regionIDs = reg_list,
+      regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_LD_gcam",
       case = "LDparams_bc",
@@ -256,7 +218,7 @@ lapply(scen_list_demand,function(x) {
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
+      impose_min = TRUE,
       save_result = TRUE)
 
   # GCAM scenario ensembles
