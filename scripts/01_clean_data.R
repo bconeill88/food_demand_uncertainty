@@ -1,103 +1,89 @@
-# read in raw data, clean, save 
+# Read in raw parameter ensemble data and observational data from /data/raw in
+# the subdirectory given by rawdata_dir (in common_definitions.R). Clean and
+# save data in /data/processed in the subdirectory given by procdata_dir
 
-# TO DO:
-# load required packages
-# source functions
-# redo path names to be consistent with project structure
-# define data file names
-# define start and stop iteration numbers
-# define sub-sample size
-# change file format to rds for saved files
+# load functions and common definitions
+source("R/common_definitions.R")
+source("R/init_packages.R")
+source("R/install_ambrosia_function.R")
 
-# details of cleaning depend on the raw files, so separate code for each set
-if(grepl("update9_cnstrlam_agg32FE_13jan25",analysis_dir)) {
+# install or load packages
+ensure_package(tidyverse)
+
+# read in data files
+# ensemble of global parameters
+param_data_global_raw <- 
+  read.table(file.path("data", "raw", rawdata_dir, param_data_global_file), header = TRUE)
+# ensemble of regional fixed effect parameters
+param_data_FE_raw <-
+  read.table(file.path("data", "raw", rawdata_dir, param_data_FE_file), header = TRUE) 
+# observational data for 32 GCAM regions
+obs_data <- 
+  read.csv(file.path("data", "raw", rawdata_dir, obs_data_file), header = TRUE)
+
+# clean global and FE parameter data, and take subset of data for analysis; details 
+# depend on the specific files that were generated, so there is separate code for each set
+if(grepl("ambrosia_9_params_24Jan25", param_data_global_file)) {
   
-  # global parameter data
-  param_data_global_raw <-
-    read.mc.data(paste(input_raw_path,param_data_global_file,sep="/"),
-                 varnames = namemc(nparam = 11))
-  # name this unnamed column
-  colnames(param_data_global_raw)[13] <- "iteration"
-  # remove first row which repeats column headings
-  param_data_global_clean <- param_data_global_raw[-1,]
-  # convert all columns from character to numeric
-  i <- c(1:ncol(param_data_global_clean))
-  param_data_global_clean[, i] <- apply(param_data_global_clean[, i], 2,
-                                        function(x) as.numeric(unlist(x)))
-  # keep samples only after burn in
-  param_data_global_clean <- param_data_global_clean %>%
-    filter(iteration >= iter_start,iteration <= iter_end) %>% arrange(iteration)
-  # create sub-sample for analysis of distributions
+  param_data_global_clean <- param_data_global_raw %>%
+    
+    # remove unnecessary column
+    select(-chain) %>%
+    # rename for consistency
+    rename(iteration = iteration_number) %>%
+    # convert all columns to numeric
+    mutate_all(as.numeric) %>%
+    # keep samples only after burn in
+    filter(iteration >= iter_start, iteration <= iter_end) %>%
+    # order by iteration for clarity
+    arrange(iteration)
+
   param_data_global_clean_sub <- param_data_global_clean %>%
-    slice_sample(n=subsample) %>% arrange(iteration)
+    slice_sample(n = subsample) %>%
+    arrange(iteration)
   
-  # FE parameter data
-  param_data_FE_raw <-
-    read.table(paste(input_raw_path,param_data_FE_file,sep="/"),
-               header=TRUE,sep="") %>% rename(iteration = iteration_number)
-  # select same iterations as in global parameter data
-  param_data_FE_clean <-
-    subset(param_data_FE_raw,iteration %in% param_data_global_clean$iteration)
-  param_data_FE_clean_sub <-
-    subset(param_data_FE_raw,iteration %in% param_data_global_clean_sub$iteration)
+  param_data_FE_clean <- param_data_FE_raw %>%
+    
+    # rename for consistency
+    rename(iteration = iteration_number) %>%
+    # select same iterations as in global parameter data
+    subset(iteration %in% param_data_global_clean$iteration) %>%
+    arrange(iteration)
   
-  # observational data for 32 GCAM regions
-  obs_data <- read.csv(paste(input_raw_path,obs_data_file,sep="/"))
+  param_data_FE_clean_sub <- param_data_FE_clean %>%
+    
+    # select same iterations as in sub-sample of global parameter data
+    subset(iteration %in% param_data_global_clean_sub$iteration) %>%
+    arrange(iteration)
   
-} else if(grepl("update9_cnstrlam_agg32FE_24jan25",analysis_dir)) {
+} else {
   
-  # global parameter data
-  param_data_global_raw <-
-    read.mc.data(paste(input_raw_path,param_data_global_file,sep="/"),
-                 varnames = namemc(nparam = 11))
-  # name this unnamed column
-  colnames(param_data_global_raw)[13] <- "iteration"
-  # remove last column which is not needed
-  param_data_global_raw[14] <- NULL
-  # convert all columns from character to numeric
-  param_data_global_clean <- param_data_global_raw
-  i <- c(1:ncol(param_data_global_clean))
-  param_data_global_clean[, i] <- apply(param_data_global_clean[, i], 2,
-                                        function(x) as.numeric(unlist(x)))
-  # keep samples only after burn in
-  param_data_global_clean <- param_data_global_clean %>%
-    filter(iteration >= iter_start,iteration <= iter_end) %>% arrange(iteration)
-  # create sub-sample for analysis of distributions
-  param_data_global_clean_sub <- param_data_global_clean %>%
-    slice_sample(n=subsample) %>% arrange(iteration)
-  
-  # FE parameter data
-  param_data_FE_raw <-
-    read.table(paste(input_raw_path,param_data_FE_file,sep="/"),
-               header=TRUE,sep="") %>% rename(iteration = iteration_number)
-  # select same iterations as in global parameter data
-  param_data_FE_clean <-
-    subset(param_data_FE_raw,iteration %in% param_data_global_clean$iteration)
-  param_data_FE_clean_sub <-
-    subset(param_data_FE_raw,iteration %in% param_data_global_clean_sub$iteration)
-  
-  # observational data for 32 GCAM regions
-  obs_data <- read.csv(paste(input_raw_path,obs_data_file,sep="/"))
+  stop("Raw parameter data file names not correctly specified.")
 }
-
-# save cleaned files
-save(param_data_global_clean,
-     file = paste(analysis_dir,input_path,"param_data_global_clean.RData",sep="/"))
-save(param_data_global_clean_sub,
-     file = paste(analysis_dir,input_path,"param_data_global_clean_sub.RData",sep="/"))
-save(param_data_FE_clean,
-     file = paste(analysis_dir,input_path,"param_data_FE_clean.RData",sep="/"))
-save(param_data_FE_clean_sub,
-     file = paste(analysis_dir,input_path,"param_data_FE_clean_sub.RData",sep="/"))
-save(obs_data,
-     file = paste(analysis_dir,input_path,"obs_data.RData",sep="/"))
+  
+# save cleaned and sampled files
+saveRDS(param_data_global_clean,
+        file = file.path("data", "processed", procdata_dir, "inputs", 
+                         "param_data_global_clean.RDS"))
+saveRDS(param_data_global_clean_sub,
+        file = file.path("data", "processed", procdata_dir, "inputs", 
+                         "param_data_global_clean_sub.RDS"))
+saveRDS(param_data_FE_clean,
+        file = file.path("data", "processed", procdata_dir, "inputs", 
+                         "param_data_FE_clean.RDS"))
+saveRDS(param_data_FE_clean_sub,
+        file = file.path("data", "processed", procdata_dir, "inputs", 
+                         "param_data_FE_clean_sub.RDS"))
+saveRDS(obs_data,
+        file = file.path("data", "processed", procdata_dir, "inputs", 
+                         "obs_data.RDS"))
 
 # clean up
-rm(param_data_global_raw,param_data_FE_raw)
-rm(param_data_global_clean,param_data_global_clean_sub,param_data_FE_clean,
-   param_data_FE_clean_sub,obs_data)
+rm(param_data_global_raw, param_data_FE_raw)
+rm(param_data_global_clean, param_data_global_clean_sub, param_data_FE_clean,
+   param_data_FE_clean_sub, obs_data)
 
-print("saved cleaned data")
+print("Saved cleaned data")
 
 
 

@@ -16,7 +16,7 @@ scen_amb <- "Ref_ML_gcam"
 
 # Define data directories
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir_ens_bc <- "ens_bc_20251009_221027"
+procdata_subdir_ens_bc <- "MLparams_ens_bc_20251028_154108"
 procdata_subdir_MLscen <- "MLparams_bc_20251028_092955"
 procdata_subdir_HDscen <- "HDparams_bc_20251028_093125"
 procdata_subdir_LDscen <- "LDparams_bc_20251028_093042"
@@ -72,7 +72,7 @@ ggsave(file.path(output_dir, paste0("demand_R", example_region, "_ens_bc.png")),
 # Plot all regions, regional total results
 p_all_regional <- purrr::map_dfr(region_list, function(region_id) {
   demand_path_ens_bc <- file.path("data", "processed", procdata_dir, scen_amb, procdata_subdir_ens_bc,
-                                  paste0("demand_R", region_id, "_ens_bc.RDS"))
+                                  paste0("demand_R", region_id, "_MLparams_ens_bc.RDS"))
   demand_reg_ens_bc <- readRDS(demand_path_ens_bc)
 
   plot_regional_demand_comparison(

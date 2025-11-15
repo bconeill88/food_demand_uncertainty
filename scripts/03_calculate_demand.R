@@ -28,7 +28,7 @@ if (Sys.info()["nodename"] == "WF10681") {
 
 # subdirectories of data/processed to use
 procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-procdata_subdir <- "Ref_ML_gcam/ens_bc_20251009_221027"
+#procdata_subdir <- "Ref_ML_gcam/ens_bc_20251009_221027"
 gcam_results_dir <- "results_gcam"
 
 # define list of scenarios to run
@@ -39,8 +39,9 @@ scen_list_demand <-
 #  list("Ref_LD_gcam_LDparams_bc")
 #  list("Ref_HD_gcam_HDparams_bc")
 #  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
- list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
-      "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
+#  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
+#       "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
+   list("Ref_ML_gcam_ens_bc")
 
 # define regions to run over
 # get command line arguments
@@ -75,16 +76,16 @@ load(file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RD
 load(file.path("data", "processed", procdata_dir, "params_ML_intervals_FE.RData"))
 
 # HD/LD parameter values; files read in are produced by running 07_params_for_intervals.R
-params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                         "params_global_HDLD_Qtot.csv"))
-params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                         "params_FE_HDLD_Qtot.csv"))
-iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
-                                      "iter_table_HDLD_Qtot.csv"))
+# params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+#                                          "params_global_HDLD_Qtot.csv"))
+# params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+#                                          "params_FE_HDLD_Qtot.csv"))
+# iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+#                                       "iter_table_HDLD_Qtot.csv"))
 
 # identify iterations associated with global HD and LD parameters
-iter_HD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "HD_Qtot"]
-iter_LD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "LD_Qtot"]
+# iter_HD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "HD_Qtot"]
+# iter_LD <- iter_table_HDLD[iter_table_HDLD$ID == 33, "LD_Qtot"]
 
 # calculate demand and elasticities for the subsample parameter iterations, for all
 # regions given a dataframe of income and prices, saves regional results, for each
@@ -264,10 +265,10 @@ lapply(scen_list_demand,function(x) {
   } else if(x == "Ref_ML_gcam_ens_bc") {
     
     # modifications for small test runs
-    # param_data_global_clean_sub <- param_data_global_clean_sub[1:10,]
-    # param_data_FE_clean_sub <-
-    #   subset(param_data_FE_clean_sub,
-    #          iteration %in% param_data_global_clean_sub$iteration)
+    param_data_global_clean_sub <- param_data_global_clean_sub[sample(nrow(param_data_global_clean_sub), 200),]
+    param_data_FE_clean_sub <-
+      subset(param_data_FE_clean_sub,
+             iteration %in% param_data_global_clean_sub$iteration)
     # reg_list <- c(1,2)
 
     food.dmnd.ens_bc(
@@ -277,7 +278,7 @@ lapply(scen_list_demand,function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "MLparams_ens_bc",       # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -352,7 +353,7 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_HD_gcam",
-      case = "ens_bc",        # file ext: bias corrected ensemble
+      case = "HDparams_ens_bc",        # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -370,7 +371,7 @@ lapply(scen_list_demand,function(x) {
       regions = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_LD_gcam",
-      case = "ens_bc",          # file ext: bias corrected ensemble
+      case = "LDparams_ens_bc",          # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,

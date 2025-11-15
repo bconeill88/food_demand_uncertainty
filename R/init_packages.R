@@ -1,3 +1,18 @@
+# Helper function to guarantee that a required R package is available and loaded,
+# in a way that allows scripts to run automatically on different machines (local, 
+# cluster, etc.) without manual package installation or library path management.
+#
+# What this function does:
+# 1. Takes the name of a package (optionally with a user-specified local library path).
+# 2. Ensures a valid CRAN mirror is set (defaults to cloud.r-project.org if unset);
+#    This is important because in some environments (e.g., HPC clusters) R often starts
+#    with no default repository, in which case this function will fail.
+# 3. Checks whether the package is already installed.
+#       • If not installed:
+#             - Creates the local library directory (if provided and missing).
+#             - Installs the package (in the local library if specified, otherwise default).
+# 4. Loads the package, using the local library if supplied.
+#
 ensure_package <- function(pkg, local_lib = NULL) {
   pkg <- as.character(substitute(pkg))
   
