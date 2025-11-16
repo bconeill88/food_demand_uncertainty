@@ -25,3 +25,7 @@ gcam_results_dir <- "results_gcam"
 # paths to ambrosia source on different machines
 ambrosia_path_windows <- "H:/My Drive/R projects/food_demand/ambrosia"
 ambrosia_path_pic     <- "/qfs/people/onei736/food_demand/ambrosia"
+
+# confidence interval to use for the parameter uncertainty ranges in 
+# 02_parameter_uncertainty_intervals.R
+confinterval <- 90
