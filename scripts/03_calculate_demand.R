@@ -8,28 +8,13 @@
 
 # load functions
 source("R/demand_functions.R")
-#source("R/min_calorie_adjustment.R")
 source("R/install_ambrosia_function.R")
 source("R/init_packages.R")
 
 # install or load packages as needed
 ensure_package(tidyverse)
 ensure_package(progressr)
-
-# install ambrosia if necessary based on machine (WF10681 or PIC)
-force_install <- TRUE   # set to TRUE for testing new ambrosia version
-if (Sys.info()["nodename"] == "WF10681") {
-  install_ambrosia_once("H:/My Drive/R projects/food_demand/ambrosia", force_install)
-} else {
-  # setwd("/qfs/people/onei736/food_demand/uncertainty")
-  # install_ambrosia_once(force_install)
-  install_ambrosia_once("/qfs/people/onei736/food_demand/ambrosia", force_install)
-}
-
-# subdirectories of data/processed to use
-procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-#procdata_subdir <- "Ref_ML_gcam/ens_bc_20251009_221027"
-gcam_results_dir <- "results_gcam"
+install_ambrosia(force_install = FALSE)
 
 # define list of scenarios to run
 scen_list_demand <- 
