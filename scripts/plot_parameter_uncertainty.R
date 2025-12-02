@@ -22,6 +22,12 @@ params_ML_intervals_global <-
 params_ML_intervals_FE <- 
   readRDS(file.path("data", "processed", procdata_dir, "params_ML_intervals_FE.RDS"))
 
+params_ML_intervals_global_24jan25 <- 
+  readRDS(file.path("data", "processed", "update9_cnstrlam_agg32FE_24jan25", "params_ML_intervals_global.RDS"))
+
+params_ML_intervals_FE_24jan25 <- 
+  readRDS(file.path("data", "processed", "update9_cnstrlam_agg32FE_24jan25", "params_ML_intervals_FE.RDS"))
+
 #------------------------------------------------------------------------------
 # 1. Create trace plots
 #------------------------------------------------------------------------------
@@ -49,11 +55,16 @@ ml_vals_global <- params_ML_intervals_global %>%
   filter(measure == "ML") %>%
   select(all_of(param_cols_global))
 
+ml_vals_global_24jan25 <- params_ML_intervals_global_24jan25 %>%
+  filter(measure == "ML") %>%
+  select(all_of(param_cols_global))
+
 p_dens_global <- make_density_plots_global(
   paramdata    = param_data_global_clean_sub,
   param_cols   = param_cols_global,
-  vline_values = list(ml_vals_global),
-  vline_labels = "ML",
+  vline_values = list(ml_vals_global, ml_vals_global_24jan25),
+  vline_labels = list("ML", "ML_24jan25"),
+  vline_colors   = c("ML" = "red", "ML_24jan25" = "orange"),
   title        = "Global parameter posteriors",
   subtitle     = "Posterior densities with ML point estimates"
 )
@@ -64,12 +75,16 @@ ml_vals_fe <- params_ML_intervals_FE %>%
   filter(measure == "ML") %>%
   select(region, staples_FE)
 
+ml_vals_fe_24jan25 <- params_ML_intervals_FE_24jan25 %>%
+  filter(measure == "ML") %>%
+  select(region, staples_FE)
+
 p_dens_FE <- make_density_plots_FE(
   paramdata      = param_data_FE_clean_sub,
   value_col      = "staples_FE",
-  vline_values   = list(ml_vals_fe),
-  vline_labels   = "ML",
-  vline_colors   = c("ML" = "red"),
+  vline_values   = list(ml_vals_fe, ml_vals_fe_24jan25),
+  vline_labels   = list("ML", "ML_24jan25"),
+  vline_colors   = c("ML" = "red", "ML_24jan25" = "orange"),
   title          = "FE parameter posteriors",
   subtitle       = "Posterior densities of staples_FE with ML point estimates",
   regions_per_page = 16,

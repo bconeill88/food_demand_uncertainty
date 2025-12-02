@@ -103,13 +103,19 @@ new_samples <- params_ML_intervals_FE[
 param_data_FE_clean_sub <- rbind(param_data_FE_clean_sub, new_samples)
 
 # Save results
-# ML and uncertainty interval parameters
+# ML and uncertainty interval parameters, including csv versions for Kanishka
 saveRDS(params_ML_intervals_global,
         file = file.path("data", "processed", procdata_dir,
                          "params_ML_intervals_global.RDS"))
 saveRDS(params_ML_intervals_FE,
         file = file.path("data", "processed", procdata_dir,
                          "params_ML_intervals_FE.RDS"))
+write.csv(params_ML_intervals_global,
+        file = file.path("data", "processed", procdata_dir,
+                         "params_ML_intervals_global.csv"))
+write.csv(params_ML_intervals_FE,
+        file = file.path("data", "processed", procdata_dir,
+                         "params_ML_intervals_FE.csv"))
 # potentially modifed parameter sub-samples
 saveRDS(param_data_global_clean_sub,
         file = file.path("data", "processed", procdata_dir, "inputs", 

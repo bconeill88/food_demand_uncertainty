@@ -21,6 +21,9 @@ param_data_FE_raw <-
 obs_data <- 
   read.csv(file.path("data", "raw", rawdata_dir, obs_data_file), header = TRUE)
 
+# manually check for highest value of log likelihood to see which iteration is ML result
+# param_data_global_raw[which.max(param_data_global_raw$LL),]
+
 # clean global and FE parameter data, and take subset of data for analysis
 
 # one unique initial step for raw data case: Jan 25 MCMC results
@@ -30,7 +33,8 @@ if(grepl("ambrosia_9_params_24Jan25", param_data_global_file)) {
   param_data_global_raw <- param_data_global_raw %>% select(-chain)
 
   # check to make sure that data file name exists
-} else if(!grepl("ambrosia_9_params_16Nov25", param_data_global_file)) {
+} else if(!grepl("ambrosia_9_params_16Nov25", param_data_global_file) &
+          !grepl("ambrosia_9_params_23Nov2025", param_data_global_file)) {
   
   stop("Raw parameter data file names not correctly specified.")
 }
