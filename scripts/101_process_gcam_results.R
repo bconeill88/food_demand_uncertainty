@@ -17,22 +17,17 @@ library(rgcam)
 library(tidyverse)
 
 # get functions
+source("R/common_definitions.R")
 source("R/gcam_results_function.R")
-
-# define sub-directories of data/processed or data/raw to use
-gcam_rawdata_dir <- "final_rgcam_outputs"
-gcam_rawdata_subdir <- "tables_24oct25"
-procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-gcam_results_dir <- "results_gcam"
 
 # load GCAM scenario results: Kanishka's rgcam query results using rgcam function; 
 # assign to names indicating GCAM scenario first, then parameters used in the GCAM run
 prj_Ref_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_ML.proj"))
 # prj_HP_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_MLHipricecond.proj"))
-prj_Ref_HD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HiDemand.proj"))
+# prj_Ref_HD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HiDemand.proj"))
 # prj_Ref_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Hi_price.proj"))
 # prj_HP_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HipriceHipricecond.proj"))
-prj_Ref_LD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_LoDemand.proj"))
+# prj_Ref_LD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_LoDemand.proj"))
 # prj_Ref_LPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Lo_price.proj"))
 # prj_HP_LPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_LopriceHipricecond.proj"))
 # prj_Ref_GCAM7 <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Ref.proj"))
@@ -54,8 +49,8 @@ inc_share_data <- read.csv(file.path("data", "raw", gcam_rawdata_dir, "incomes.c
 # first (Ref or High Price (HP)), then the parameters used (ML, HD, LD, etc.), then
 # _gcam to indicate that they are gcam results, not ambrosia
 GCAM_output_list <- 
-#  list("Ref_ML"=prj_Ref_ML)
-  list("Ref_ML"=prj_Ref_ML, "Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
+  list("Ref_ML"=prj_Ref_ML)
+  # list("Ref_ML"=prj_Ref_ML, "Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
   # list("Ref_HD"=prj_Ref_HD,"Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
   #      "Ref_LD"=prj_Ref_LD,"Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR,
   #      "Ref_ML"=prj_Ref_ML,"HP_ML"=prj_HP_ML,"Ref_GCAM7"=prj_Ref_GCAM7,
