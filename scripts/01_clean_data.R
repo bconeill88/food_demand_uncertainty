@@ -21,6 +21,28 @@ param_data_FE_raw <-
 obs_data <- 
   read.csv(file.path("data", "raw", rawdata_dir, obs_data_file), header = TRUE)
 
+# Make sure only iterations in common between datasets are retained
+
+# Count distinct iterations *before* filtering
+n_global_before <- dplyr::n_distinct(param_data_global_raw$iteration_number)
+n_FE_before     <- dplyr::n_distinct(param_data_FE_raw$iteration_number)
+# Identify common iterations
+common_iterations <- intersect(
+  param_data_global_raw$iteration_number,
+  param_data_FE_raw$iteration_number
+)
+# Filter both datasets to the common iterations
+param_data_global_raw <- param_data_global_raw %>% 
+  filter(iteration_number %in% common_iterations)
+param_data_FE_raw <- param_data_FE_raw %>% 
+  filter(iteration_number %in% common_iterations)
+# Count after filtering
+n_global_after <- dplyr::n_distinct(param_data_global_raw$iteration_number)
+n_FE_after     <- dplyr::n_distinct(param_data_FE_raw$iteration_number)
+# log how many were removed
+cat("Global params: removed", n_global_before - n_global_after, "iterations\n")
+cat("FE params:     removed", n_FE_before     - n_FE_after,     "iterations\n")
+
 # manually check for highest value of log likelihood to see which iteration is ML result
 # param_data_global_raw[which.max(param_data_global_raw$LL),]
 
