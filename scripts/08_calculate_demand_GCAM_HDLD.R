@@ -9,6 +9,7 @@
 # date
 
 # load functions
+source("R/common_definitions.R")
 source("R/demand_functions.R")
 source("R/install_ambrosia_function.R")
 source("R/init_packages.R")
@@ -16,7 +17,7 @@ source("R/init_packages.R")
 # install or load packages as needed
 ensure_package(tidyverse)
 ensure_package(progressr)
-install_ambrosia(force_install = FALSE)
+install_ambrosia_once(force_install = FALSE)
 
 # define regions to run over
 # get command line arguments
@@ -30,19 +31,20 @@ if (length(args) > 0) {
 # load parameter files
 
 # ensembles of parameters from MCMC; files read in are produced by running 01_clean_data.R
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_global_clean_sub.RData"))
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_FE_clean_sub.RData"))
-
-# ML parameter values; files read in are produced by running 02_parameter_uncertainty_intervals.R
-load(file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RData"))
-load(file.path("data", "processed", procdata_dir, "params_ML_intervals_FE.RData"))
+param_data_global_clean_sub <- 
+  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+                    "param_data_global_clean_sub.RDS"))
+param_data_FE_clean_sub <- 
+  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+                    "param_data_FE_clean_sub.RDS"))
 
 # HD/LD parameter values; files read in are produced by running 07_params_for_intervals.R
-params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+# They come from the Ref_ML_gcam subdirectory because they are produced from that ensemble
+params_HDLD_global <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam", procdata_subdir,
                                          "params_global_HDLD_Qtot.csv"))
-params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+params_HDLD_FE <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam", procdata_subdir,
                                          "params_FE_HDLD_Qtot.csv"))
-iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, procdata_subdir,
+iter_table_HDLD <- read.csv(file.path("data", "processed", procdata_dir, "Ref_ML_gcam", procdata_subdir,
                                       "iter_table_HDLD_Qtot.csv"))
 
 # identify iterations associated with global HD and LD parameters
@@ -77,8 +79,6 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
       save_result = TRUE)
 
   } else if(x == "Ref_ML_gcam_LDparams_bc") {
@@ -94,8 +94,6 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
       save_result = TRUE)
     
   } else if(x == "Ref_HD_gcam_HDparams_bc") {
@@ -111,8 +109,6 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
       save_result = TRUE)
     
     # plot comparison of variants of HD scenario
@@ -166,8 +162,6 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      bias_method = "solve",       # either "subtract" or "solve"
       save_result = TRUE)
 
   # GCAM scenario ensembles
@@ -178,15 +172,13 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       globalparams = param_data_global_clean_sub,
       regparams = param_data_FE_clean_sub,
       inputdata = gcamoutput_Ref_HD,
-      regions = reg_list,
+      regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_HD_gcam",
-      case = "HDparams_ens_bc",        # file ext: bias corrected ensemble
+      case = "ens_bc",        # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
       save_result = TRUE
     )
     
@@ -196,15 +188,13 @@ lapply(scen_list_demand_GCAM_HDLD, function(x) {
       globalparams = param_data_global_clean_sub,
       regparams = param_data_FE_clean_sub,
       inputdata = gcamoutput_Ref_LD,
-      regions = reg_list,
+      regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_LD_gcam",
-      case = "LDparams_ens_bc",          # file ext: bias corrected ensemble
+      case = "ens_bc",          # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
-      alloc_thresh = alloc_ratio,
-      impose_min = TRUE,
       save_result = TRUE
     )
   }

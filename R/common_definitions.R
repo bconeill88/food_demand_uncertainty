@@ -24,17 +24,20 @@ gcam_rawdata_subdir <- "tables_1dec25"
 
 # Directories for analysis results ---------------------------------------------
 
-# subdirectories of "data/processed/" to use for data analysis results
+# subdirectory of "data/processed/" to use for data analysis results
 procdata_dir <- "mcmc_23nov25"
-procdata_subdir <- "Ref_ML_gcam"
-# procdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-# procdata_subdir <- "Ref_ML_gcam/ens_bc_20251009_221027"
+
+# subdirectory of "procdata_dir" to extract results from
+procdata_subdir_RefMLgcam <- "Ref_ML_gcam/ens_bc_combined_20251203_070624"
+procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/ens_bc_combined_20251211_024942"
+demand_diffs_subdir <- "diffs_Ref_ML_HP_gcam"
+
+# subdirectory of "data/processed/" to use for processed gcam results
 gcam_results_dir <- "results_gcam"
 
 # Create directories that don't exist yet --------------------------------------
 
 directories_to_check <- c(
-  file.path("data", "processed", procdata_dir, procdata_subdir),
   file.path("data", "processed", procdata_dir, "inputs"),
   file.path("data", "processed", procdata_dir, gcam_results_dir)
 )
@@ -64,7 +67,9 @@ iter_end <- Inf
 # size of sub-sample of the raw MCMC results to take to do the analysis on
 subsample <- 10000
 
-# Parameters for uncertainty intervals -----------------------------------------
+# Parameters for parameter-based uncertainty intervals -------------------------
+# SHOULD THE R SCRIPT HERE BE "DEMAND FOR PARAMETER INTERVALS", WHILE BELOW
+# IT WOULD BE "PARAMETERS FOR DEMAND INTERVALS"?
 
 # confidence interval to use for the parameter uncertainty ranges in 
 # 02_parameter_uncertainty_intervals.R
@@ -77,6 +82,16 @@ confinterval <- 90
 Qs_floor <- NULL
 Qn_floor <- NULL
 
+# Parameters for demand-based uncertainty intervals ----------------------------
+
+# years to use for identifying iterations in 07_parameters_for_intervals.R
+year_iter <- c(seq(2020,2100, by=5))
+# quantile intervals for defining high and low demand
+hi_min <- 95
+hi_max <- 100
+lo_min <- 0
+lo_max <- 5
+
 # Scenario lists to run demand calculations for --------------------------------
 
 # scenarios to run in 03a_calculate_demand_ens_only.R
@@ -87,24 +102,20 @@ Qn_floor <- NULL
 
 # scenarios to run in 03c_calculate_demand_GCAM_ML.R
 scen_list_demand_GCAM_ML <- 
-  #  list("Ref_ML_gcam_MLparams_bc")
-  #  list("Ref_ML_gcam_LDparams_bc")
-  #  list("Ref_ML_gcam_HDparams_bc")
-  #  list("Ref_LD_gcam_LDparams_bc")
-  #  list("Ref_HD_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
-  #       "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
-  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
+  # list("Ref_ML_gcam_MLparams_bc")
+  # list("Ref_ML_gcam_ens_bc")
+  list("Ref_ML_HP_gcam_ens_bc")
+  # list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
 
 # scenarios to run in 08_calculate_demand_GCAM_HDLD.R
-# scen_list_demand_GCAM_HDLD <- 
-  #  list("Ref_ML_gcam_MLparams_bc")
+scen_list_demand_GCAM_HDLD <-
   #  list("Ref_ML_gcam_LDparams_bc")
   #  list("Ref_ML_gcam_HDparams_bc")
   #  list("Ref_LD_gcam_LDparams_bc")
   #  list("Ref_HD_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
+  #  list("Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
+  #  list("Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
   #       "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
+  # list("Ref_HD_gcam_ens_bc")
+  list("Ref_LD_gcam_ens_bc")
 

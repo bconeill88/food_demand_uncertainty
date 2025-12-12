@@ -145,11 +145,11 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
       # calculate demand for this iteration
       demand_reg_iter <- food.dmnd(inputdata_region$Ps, inputdata_region$Pn, 
                                    inputdata_region$Y, params = param_structure,
-                                   NULL, # rgn argument, not needed
+                                   rgn = region_id, # rgn argument, not needed
                                    regparams_reg_iter$staples_FE, 
                                    biasdata_reg_iter$RBs, 
                                    biasdata_reg_iter$RBn) # %>%
-      
+
       demand_reg_iter <- demand_reg_iter %>%
         
         # add iteration number, likelihood value

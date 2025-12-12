@@ -20,7 +20,7 @@ source("R/init_packages.R")
 # install or load packages as needed
 ensure_package(tidyverse)
 ensure_package(progressr)
-install_ambrosia_once(force_install = TRUE)
+install_ambrosia_once(force_install = FALSE)
 
 # define regions to run over
 # get command line arguments
@@ -51,13 +51,9 @@ params_ML_intervals_FE <-
 
 # load GCAM results, as input assumptions for ambrosia (prices, income); file read
 # in is produced by running 101_process_GCAM_results.R
-# gcamoutput_Ref_ML <- 
-#   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir, 
-#                     "gcamoutput_Ref_ML.RDS"))
-gcamoutput_Ref_ML_HP <- 
+gcamoutput_Ref_ML <- 
   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir, 
-                    "gcamoutput_HP_ML.RDS"))
-
+                    "gcamoutput_Ref_ML.RDS"))
 
 # Calculate demand and elasticities for the subsample parameter iterations, for all
 # regions given a dataframe of income and prices, saves regional results, for each
@@ -74,7 +70,7 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "MLparams_ens_bc",       # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -111,23 +107,7 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
     
     
     # ensemble driven by GCAM ML prices, income
- } else if(x == "Ref_ML_HP_gcam_ens_bc") {
-    
-    food.dmnd.ens_bc(
-      globalparams = param_data_global_clean_sub,
-      regparams = param_data_FE_clean_sub,
-      inputdata = gcamoutput_Ref_ML_HP,
-      regionIDs = reg_list,
-      output_dir = procdata_dir,
-      scen = "Ref_ML_HP_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
-      baseyr = 2015,
-      Qs_min = Qs_floor,
-      Qn_min = Qn_floor,
-      save_result = TRUE
-    )
-
-  } else if(x == "Ref_ML_gcam_ens_bc") {
+  } else if(x == "Ref_ML_gcam_MLparams_ens_bc") {
     
     # modifications for small test runs
     # param_data_global_clean_sub <- param_data_global_clean_sub[sample(nrow(param_data_global_clean_sub), 20),]
@@ -143,7 +123,7 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir,
       scen = "Ref_ML_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "MLparams_ens_bc",       # file ext: bias corrected ensemble
       baseyr = 2015,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
@@ -158,12 +138,12 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
     #   filter(measure == "ML") %>% 
     #   pull(iteration)
     # 
-    # tmpR1 <- readRDS(paste("data/processed",procdata_dir,
-    #                        "Ref_ML_gcam/demand_ens_bc_20251202_170408/demand_R1_MLparams_ens_bc.RDS",
-    #                        sep = "/")) %>%
-    #   filter(year == 2015)
+    tmpR1 <- readRDS(paste("data/processed",procdata_dir,
+                           "Ref_ML_gcam/MLparams_ens_bc_20251202_170408/demand_R1_MLparams_ens_bc.RDS",
+                           sep = "/")) %>%
+      filter(year == 2015)
     # tmpR2 <- readRDS(paste("data/processed",procdata_dir,
-    #                        "Ref_ML_gcam/demand_ens_bc_20251202_170408/demand_R2_ens_bc.RDS",
+    #                        "Ref_ML_gcam/MLparams_ens_bc_20251202_170408/demand_R2_ens_bc.RDS",
     #                        sep = "/")) %>%
     #   filter(year == 2015)
     # tmpR3 <- readRDS(paste("data/processed",procdata_dir,

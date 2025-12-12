@@ -12,7 +12,7 @@
 make_HD_LD_params_freq <- function(
     year_vals,
     data_dir,
-    data_subdir,
+    out_dir,
     scen,
     scen_case,
     regions,
@@ -26,16 +26,15 @@ make_HD_LD_params_freq <- function(
   message("Calculating HD and LD parameters for scenario ", scen)
   
   # Central output directory path
-  out_dir <- file.path("data", "processed", data_dir, scen, data_subdir)
   if (save_outputs) {
     dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   }
   
   # Load parameter files
-  param_file_global <- file.path("data", "processed", data_dir, "inputs", "param_data_global_clean_sub.RData")
-  param_file_FE     <- file.path("data", "processed", data_dir, "inputs", "param_data_FE_clean_sub.RData")
-  load(param_file_global)
-  load(param_file_FE)
+  param_file_global <- file.path("data", "processed", data_dir, "inputs", "param_data_global_clean_sub.RDS")
+  param_file_FE     <- file.path("data", "processed", data_dir, "inputs", "param_data_FE_clean_sub.RDS")
+  param_data_global_clean_sub <- readRDS(param_file_global)
+  param_data_FE_clean_sub <- readRDS(param_file_FE)
   
   # Define interval bounds
   bounds <- list(
@@ -45,7 +44,7 @@ make_HD_LD_params_freq <- function(
   
   message("  Extracting demand in HD/LD intervals for all regions and years")
   
-  demand_intervals <- get_demand_intervals(year_vals, data_dir, data_subdir, scen, regions, bounds)
+  demand_intervals <- get_demand_intervals(year_vals, out_dir, scen_case, regions, bounds)
   
   if (save_outputs) {
     saveRDS(demand_intervals, 
@@ -90,13 +89,13 @@ make_HD_LD_params_freq <- function(
 # a type of food demand falling in given quantile; food types include Qn, Qs, Qtot, and Qs and
 # Qn simultaneously; quantiles include those defined for high demand and low demand as passed
 # in "bounds"
-get_demand_intervals <- function(year_vals, data_dir, data_subdir, scen, regions, bounds) {
+get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds) {
   
   # loop over regions
   demand_intervals_list <- map(regions, function(r) {
     
     # get demand ensemble for region
-    demand_reg_path <- file.path("data", "processed", data_dir, scen, data_subdir, paste0("demand_R", r, "_ens_bc.RDS"))
+    demand_reg_path <- file.path(out_dir, paste0("demand_R", r, scen_case, ".RDS"))
     demand_reg <- readRDS(demand_reg_path)
     
     # loop over years
@@ -281,7 +280,7 @@ build_full_frequency_table <- function(demand_result, max_iterations, regions) {
 }
 
 
-build_parameter_tables <- function(max_iterations, param_global, param_FE, data_dir, scen) {
+build_parameter_tables <- function(max_iterations, param_global, param_FE) {
   
   list(
     params_global <- map_dfr(seq_len(nrow(max_iterations)), function(i) {
@@ -305,15 +304,15 @@ plot_demand_measures_with_global <- function(
     demand_result,
     region,
     measures,
-    data_dir,
-    scen,
+    out_dir,
     sample_n = 100,
     title = TRUE
 ) {
   stopifnot(length(measures) == 2)
   
   # Load full regional ensemble for sample lines
-  demand_reg_path <- file.path("data", "processed", data_dir, scen, paste0("demand_R", region, "_ens_bc.RDS"))
+  demand_reg_path <- file.path(out_dir, 
+                               paste0("demand_R", region, scen_case, ".RDS"))
   demand_reg <- readRDS(demand_reg_path)
   
   # Sample 100 unique iterations

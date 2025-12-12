@@ -22,8 +22,8 @@ source("R/gcam_results_function.R")
 
 # load GCAM scenario results: Kanishka's rgcam query results using rgcam function; 
 # assign to names indicating GCAM scenario first, then parameters used in the GCAM run
-prj_Ref_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_ML.proj"))
-# prj_HP_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_MLHipricecond.proj"))
+# prj_Ref_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_ML.proj"))
+prj_HP_ML <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_MLHipricecond.proj"))
 # prj_Ref_HD <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HiDemand.proj"))
 # prj_Ref_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_Hi_price.proj"))
 # prj_HP_HPR <- loadProject(file.path("data/raw", gcam_rawdata_dir, gcam_rawdata_subdir, "tables_HipriceHipricecond.proj"))
@@ -49,7 +49,9 @@ inc_share_data <- read.csv(file.path("data", "raw", gcam_rawdata_dir, "incomes.c
 # first (Ref or High Price (HP)), then the parameters used (ML, HD, LD, etc.), then
 # _gcam to indicate that they are gcam results, not ambrosia
 GCAM_output_list <- 
-  list("Ref_ML"=prj_Ref_ML)
+  # list("Ref_ML"=prj_Ref_ML)
+  list("HP_ML"=prj_HP_ML)
+  # list("Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
   # list("Ref_ML"=prj_Ref_ML, "Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
   # list("Ref_HD"=prj_Ref_HD,"Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
   #      "Ref_LD"=prj_Ref_LD,"Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR,

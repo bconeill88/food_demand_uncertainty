@@ -1,20 +1,37 @@
+# Calculate and save differences in demand and elasticities between two sets of
+# demand results, for either ensembles or single scenarios.
 
-# calculate and save differences in demand and elasticities for subsample ------
-#   and intervals ----------------------------------------------------------------
-# ----
+# load functions and common definitions
+source("R/common_definitions.R")
+source("R/init_packages.R")
+source("R/demand_difference_functions.R")
 
-# TO DO:
-# source functions
-# redo path names to be consistent with project structure
-# change file format to rds for saved files
-# define scenario list
+# install or load packages
+ensure_package(tidyverse)
+
+# define scenarios (this could go in common_definitions.R)
+scen_base <- "Ref_ML_gcam"      # scenario to subtract (base scenario)
+scen_base_case <- "_ens_bc"
+scen_base_path <- file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam)
+scen_var <- "Ref_ML_HP_gcam"    # scenario to subtract from (variant scenario)
+scen_var_case <- "_ens_bc"
+scen_var_path <- file.path("data", "processed", procdata_dir, procdata_subdir_RefMLHPgcam)
+
+# create directory for difference results if necessary
+dir.create(file.path(scen_base_path, paste0("diffs_", scen_var)), 
+           showWarnings = FALSE, recursive = TRUE)
+
+# regions to take differences over
+reg_list <- seq(1:32)
 
 # calculate difference in demand and elasticities between two different demand
 # scenarios, for regions defined by number in reg_list
-lapply(scen_list_diffs, function(x) subtract_demand_dfs(x,scen_base_diffs,reg_list)) %>%
-  invisible()
+subtract_demand_dfs(scen_var, scen_var_case, scen_var_path,
+                    scen_base, scen_base_case, scen_base_path, reg_list)
 
 print("saved differences in demand")
 
-
+# diff_result <- readRDS(file.path(scen_base_path, 
+#                                  paste0("diffs_", scen_var), 
+#                                  "demand_diffs_R5_ens_bc.RDS"))
 

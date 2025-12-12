@@ -8,116 +8,275 @@
 # ambrosia and scenario data is assumed to contain both, using _gcam and _amb variable
 # name extensions.
 plot_regional_demand_comparison <- function(
-  demand_reg, reg_num, sample_n = 100, ensemble_name,
-  scen_solid = NULL,  scen_solid_name  = NULL,
-  scen_dashed = NULL, scen_dashed_name = NULL,
-  scen_dotted = NULL, scen_dotted_name = NULL,
-  scen_model = c("gcam","amb","both"),
-  consumer_group = "FoodDemand_Group1",
-  include_comparison_scenarios = TRUE,
-  return_data = FALSE
+    demand_reg, reg_num, sample_n = 100, ensemble_name,
+    scen_solid_1  = NULL, scen_solid_name_1  = NULL,
+    scen_dashed_1 = NULL, scen_dashed_name_1 = NULL,
+    scen_dotted_1 = NULL, scen_dotted_name_1 = NULL,
+    scen_solid_2  = NULL, scen_solid_name_2  = NULL,
+    scen_dashed_2 = NULL, scen_dashed_name_2 = NULL,
+    scen_dotted_2 = NULL, scen_dotted_name_2 = NULL,
+    return_data = FALSE 
 ) {
-  scen_model <- match.arg(scen_model)
-
-  # --- Ensemble (gray spaghetti) ---
+  
+  # --- Ensemble (gray spaghetti), years >= 2015 ---
   sampled_iterations <- demand_reg %>%
-    distinct(iteration) %>% pull(iteration) %>% unique()
-  sampled_iterations <- if (length(sampled_iterations) > 0) {
-    sample(sampled_iterations, size = min(sample_n, length(sampled_iterations)))
-  } else numeric(0)
-
+    distinct(iteration) %>%
+    pull(iteration)
+  
+  if (length(sampled_iterations) > sample_n) {
+    sampled_iterations <- sample(sampled_iterations, size = sample_n)
+  }
+  
   sampled_data <- demand_reg %>%
-    filter(iteration %in% sampled_iterations) %>%
+    filter(year >= 2015,
+           iteration %in% sampled_iterations) %>%
     select(iteration, year, Qs.region, Qn.region, Qtot.region) %>%
-    tidyr::pivot_longer(c(Qs.region, Qn.region, Qtot.region),
-                        names_to = "demand_type", values_to = "demand_value") %>%
-    mutate(GCAM_region_ID = as.character(reg_num),
-           scenario_name = ensemble_name,
-           model = "ensemble",
-           line_role = "solid",  # show spaghetti as solid (thin, gray)
-           demand_type = factor(demand_type,
-                                levels = c("Qs.region","Qn.region","Qtot.region")))
-
-  # --- Helper to reshape one scenario set for a specific model ---
+    pivot_longer(
+      c(Qs.region, Qn.region, Qtot.region),
+      names_to  = "demand_type",
+      values_to = "demand_value"
+    ) %>%
+    mutate(
+      GCAM_region_ID = as.character(reg_num),
+      scenario_name  = ensemble_name,
+      model          = "ensemble",
+      line_role      = "solid",  # spaghetti lines
+      demand_type    = factor(
+        demand_type,
+        levels = c("Qs.region", "Qn.region", "Qtot.region")
+      )
+    )
+  
+  # --- Helper for single scenarios (set 1 vs set 2) ---
+  # model_tag is "set1" or "set2" and is used for color mapping.
   reshape_scenario <- function(scen_df, label, model_tag, role) {
     if (is.null(scen_df) || is.null(label)) return(tibble())
+    
     scen_df %>%
-      filter(`gcam-consumer` == consumer_group, GCAM_region_ID == reg_num) %>%
-      select(year,
-             !!sym(paste0("Qs.region_",  model_tag)),
-             !!sym(paste0("Qn.region_",  model_tag)),
-             !!sym(paste0("Qtot.region_",model_tag))) %>%
-      rename(Qs.region  = !!sym(paste0("Qs.region_",  model_tag)),
-             Qn.region  = !!sym(paste0("Qn.region_",  model_tag)),
-             Qtot.region= !!sym(paste0("Qtot.region_",model_tag))) %>%
-      tidyr::pivot_longer(c(Qs.region, Qn.region, Qtot.region),
-                          names_to = "demand_type", values_to = "demand_value") %>%
-      mutate(scenario_name = label,
-             GCAM_region_ID = as.character(reg_num),
-             model = model_tag,
-             line_role = role,
-             iteration = NA_integer_,
-             demand_type = factor(demand_type,
-                                  levels = c("Qs.region","Qn.region","Qtot.region")))
+      filter(
+        `gcam-consumer` == "FoodDemand_Group1",
+        GCAM_region_ID  == reg_num,
+        year >= 2015
+      ) %>%
+      select(year, Qs.region, Qn.region, Qtot.region) %>%
+      pivot_longer(
+        c(Qs.region, Qn.region, Qtot.region),
+        names_to  = "demand_type",
+        values_to = "demand_value"
+      ) %>%
+      mutate(
+        GCAM_region_ID = as.character(reg_num),
+        scenario_name  = label,
+        model          = model_tag,  # "set1" or "set2"
+        line_role      = role,       # "solid", "dashed", "dotted"
+        iteration      = NA_integer_,
+        demand_type    = factor(
+          demand_type,
+          levels = c("Qs.region", "Qn.region", "Qtot.region")
+        )
+      )
   }
-
-  # Label helper when duplicating GCAM names for Ambrosia in "both"
-  amb_name <- function(x) if (is.null(x)) NULL else sub("(?i)gcam","Ambrosia", x)
-
+  
+  # --- Build comparison scenario data for any non-NULL inputs ---
+  
   comparison_data <- tibble()
-  if (include_comparison_scenarios) {
-    if (scen_model %in% c("gcam","both")) {
-      comparison_data <- bind_rows(
-        comparison_data,
-        reshape_scenario(scen_solid,  scen_solid_name,  "gcam", "solid"),
-        reshape_scenario(scen_dashed, scen_dashed_name, "gcam", "dashed"),
-        reshape_scenario(scen_dotted, scen_dotted_name, "gcam", "dotted")
-      )
-    }
-    if (scen_model %in% c("amb","both")) {
-      comparison_data <- bind_rows(
-        comparison_data,
-        reshape_scenario(scen_solid,  if (scen_model=="both") amb_name(scen_solid_name)  else scen_solid_name,  "amb", "solid"),
-        reshape_scenario(scen_dashed, if (scen_model=="both") amb_name(scen_dashed_name) else scen_dashed_name, "amb", "dashed"),
-        reshape_scenario(scen_dotted, if (scen_model=="both") amb_name(scen_dotted_name) else scen_dotted_name, "amb", "dotted")
-      )
-    }
-  }
-
+  
+  # Set 1 (e.g., GCAM)
+  comparison_data <- bind_rows(
+    comparison_data,
+    reshape_scenario(scen_solid_1,  scen_solid_name_1,  "set1", "solid"),
+    reshape_scenario(scen_dashed_1, scen_dashed_name_1, "set1", "dashed"),
+    reshape_scenario(scen_dotted_1, scen_dotted_name_1, "set1", "dotted")
+  )
+  
+  # Set 2 (e.g., Ambrosia)
+  comparison_data <- bind_rows(
+    comparison_data,
+    reshape_scenario(scen_solid_2,  scen_solid_name_2,  "set2", "solid"),
+    reshape_scenario(scen_dashed_2, scen_dashed_name_2, "set2", "dashed"),
+    reshape_scenario(scen_dotted_2, scen_dotted_name_2, "set2", "dotted")
+  )
+  
+  # Combine ensemble spaghetti + single scenarios (all filtered to year >= 2015)
   out <- bind_rows(sampled_data, comparison_data)
-
-  if (return_data) return(out)
-
-  # If plotting a single region directly (rare in your workflow), keep styles consistent
+  
+  if (return_data) {
+    return(out)
+  }
+  
+  # --- Styling ---
+  
   scen_levels <- unique(out$scenario_name)
+  scen_levels <- scen_levels[!is.na(scen_levels)]
+  
+  # Line types from line_role; default solid
   lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
-  # assign from line_role per scenario_name (where available)
-  lr <- out %>% filter(!is.na(line_role)) %>%
+  lr <- out %>%
+    filter(!is.na(line_role)) %>%
     distinct(scenario_name, line_role)
   lt_map[lr$scenario_name] <- lr$line_role
-
-  color_map <- setNames(rep("#e6550d", length(scen_levels)), scen_levels) # default GCAM orange
-  for (s in names(color_map)) {
-    if (identical(s, ensemble_name)) { color_map[s] <- "gray60"; next }
-    if (any(out$model[out$scenario_name==s] == "amb")) color_map[s] <- "#3182bd" # amb blue
-    if (any(out$model[out$scenario_name==s] == "gcam")) color_map[s] <- "#e6550d" # gcam orange
+  
+  # Colors:
+  # - ensemble_name: gray
+  # - set1 scenarios: orange
+  # - set2 scenarios: blue
+  color_map <- setNames(rep("#e6550d", length(scen_levels)), scen_levels)  # default orange
+  if (ensemble_name %in% names(color_map)) {
+    color_map[ensemble_name] <- "gray60"
   }
-
-  ggplot(out, aes(year, demand_value,
-                  color = scenario_name, linetype = scenario_name)) +
-    geom_line(data = out %>% filter(scenario_name == ensemble_name),
-              aes(group = interaction(iteration, demand_type)),
-              alpha = 0.6, linewidth = 0.3) +
-    geom_line(data = out %>% filter(scenario_name != ensemble_name),
-              linewidth = 0.8) +
-    facet_wrap(~demand_type, scales = "free_y") +
+  
+  model_by_scen <- out %>%
+    filter(!is.na(scenario_name), !is.na(model)) %>%
+    group_by(scenario_name) %>%
+    summarise(model = first(model), .groups = "drop")
+  
+  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
+  color_map[intersect(names(color_map), set2_names)] <- "#3182bd"  # blue for set 2
+  
+  ggplot(
+    out,
+    aes(
+      x        = year,
+      y        = demand_value,
+      color    = scenario_name,
+      linetype = scenario_name
+    )
+  ) +
+    # Ensemble spaghetti
+    geom_line(
+      data = out %>% filter(scenario_name == ensemble_name),
+      aes(group = interaction(iteration, demand_type)),
+      alpha     = 0.6,
+      linewidth = 0.3
+    ) +
+    # Single scenarios
+    geom_line(
+      data = out %>% filter(scenario_name != ensemble_name),
+      linewidth = 0.8
+    ) +
+    facet_wrap(~ demand_type, scales = "free_y") +
     scale_linetype_manual(values = lt_map) +
     scale_color_manual(values = color_map) +
-    labs(x = "Year", y = "Demand", color = "Scenario", linetype = "Scenario") +
+    labs(
+      x        = "Year",
+      y        = "Demand",
+      color    = "Scenario",
+      linetype = "Scenario"
+    ) +
     theme_minimal()
 }
 
-# Regional demand: multi-page PDF; takes data frame of plots produced by 
+# plot_regional_demand_comparison <- function(
+#   demand_reg, reg_num, sample_n = 100, ensemble_name,
+#   scen_solid = NULL,  scen_solid_name  = NULL,
+#   scen_dashed = NULL, scen_dashed_name = NULL,
+#   scen_dotted = NULL, scen_dotted_name = NULL,
+#   scen_model = c("gcam","amb","both"),
+#   consumer_group = "FoodDemand_Group1",
+#   include_comparison_scenarios = TRUE,
+#   return_data = FALSE
+# ) {
+#   scen_model <- match.arg(scen_model)
+# 
+#   # --- Ensemble (gray spaghetti) ---
+#   sampled_iterations <- demand_reg %>%
+#     distinct(iteration) %>% pull(iteration) %>% unique()
+#   sampled_iterations <- if (length(sampled_iterations) > 0) {
+#     sample(sampled_iterations, size = min(sample_n, length(sampled_iterations)))
+#   } else numeric(0)
+# 
+#   sampled_data <- demand_reg %>%
+#     filter(iteration %in% sampled_iterations) %>%
+#     select(iteration, year, Qs.region, Qn.region, Qtot.region) %>%
+#     tidyr::pivot_longer(c(Qs.region, Qn.region, Qtot.region),
+#                         names_to = "demand_type", values_to = "demand_value") %>%
+#     mutate(GCAM_region_ID = as.character(reg_num),
+#            scenario_name = ensemble_name,
+#            model = "ensemble",
+#            line_role = "solid",  # show spaghetti as solid (thin, gray)
+#            demand_type = factor(demand_type,
+#                                 levels = c("Qs.region","Qn.region","Qtot.region")))
+# 
+#   # --- Helper to reshape one scenario set for a specific model ---
+#   reshape_scenario <- function(scen_df, label, model_tag, role) {
+#     if (is.null(scen_df) || is.null(label)) return(tibble())
+#     scen_df %>%
+#       filter(`gcam-consumer` == consumer_group, GCAM_region_ID == reg_num) %>%
+#       select(year,
+#              !!sym(paste0("Qs.region_",  model_tag)),
+#              !!sym(paste0("Qn.region_",  model_tag)),
+#              !!sym(paste0("Qtot.region_",model_tag))) %>%
+#       rename(Qs.region  = !!sym(paste0("Qs.region_",  model_tag)),
+#              Qn.region  = !!sym(paste0("Qn.region_",  model_tag)),
+#              Qtot.region= !!sym(paste0("Qtot.region_",model_tag))) %>%
+#       tidyr::pivot_longer(c(Qs.region, Qn.region, Qtot.region),
+#                           names_to = "demand_type", values_to = "demand_value") %>%
+#       mutate(scenario_name = label,
+#              GCAM_region_ID = as.character(reg_num),
+#              model = model_tag,
+#              line_role = role,
+#              iteration = NA_integer_,
+#              demand_type = factor(demand_type,
+#                                   levels = c("Qs.region","Qn.region","Qtot.region")))
+#   }
+# 
+#   # Label helper when duplicating GCAM names for Ambrosia in "both"
+#   amb_name <- function(x) if (is.null(x)) NULL else sub("(?i)gcam","Ambrosia", x)
+# 
+#   comparison_data <- tibble()
+#   if (include_comparison_scenarios) {
+#     if (scen_model %in% c("gcam","both")) {
+#       comparison_data <- bind_rows(
+#         comparison_data,
+#         reshape_scenario(scen_solid,  scen_solid_name,  "gcam", "solid"),
+#         reshape_scenario(scen_dashed, scen_dashed_name, "gcam", "dashed"),
+#         reshape_scenario(scen_dotted, scen_dotted_name, "gcam", "dotted")
+#       )
+#     }
+#     if (scen_model %in% c("amb","both")) {
+#       comparison_data <- bind_rows(
+#         comparison_data,
+#         reshape_scenario(scen_solid,  if (scen_model=="both") amb_name(scen_solid_name)  else scen_solid_name,  "amb", "solid"),
+#         reshape_scenario(scen_dashed, if (scen_model=="both") amb_name(scen_dashed_name) else scen_dashed_name, "amb", "dashed"),
+#         reshape_scenario(scen_dotted, if (scen_model=="both") amb_name(scen_dotted_name) else scen_dotted_name, "amb", "dotted")
+#       )
+#     }
+#   }
+# 
+#   out <- bind_rows(sampled_data, comparison_data)
+# 
+#   if (return_data) return(out)
+# 
+#   # If plotting a single region directly (rare in your workflow), keep styles consistent
+#   scen_levels <- unique(out$scenario_name)
+#   lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
+#   # assign from line_role per scenario_name (where available)
+#   lr <- out %>% filter(!is.na(line_role)) %>%
+#     distinct(scenario_name, line_role)
+#   lt_map[lr$scenario_name] <- lr$line_role
+# 
+#   color_map <- setNames(rep("#e6550d", length(scen_levels)), scen_levels) # default GCAM orange
+#   for (s in names(color_map)) {
+#     if (identical(s, ensemble_name)) { color_map[s] <- "gray60"; next }
+#     if (any(out$model[out$scenario_name==s] == "amb")) color_map[s] <- "#3182bd" # amb blue
+#     if (any(out$model[out$scenario_name==s] == "gcam")) color_map[s] <- "#e6550d" # gcam orange
+#   }
+# 
+#   ggplot(out, aes(year, demand_value,
+#                   color = scenario_name, linetype = scenario_name)) +
+#     geom_line(data = out %>% filter(scenario_name == ensemble_name),
+#               aes(group = interaction(iteration, demand_type)),
+#               alpha = 0.6, linewidth = 0.3) +
+#     geom_line(data = out %>% filter(scenario_name != ensemble_name),
+#               linewidth = 0.8) +
+#     facet_wrap(~demand_type, scales = "free_y") +
+#     scale_linetype_manual(values = lt_map) +
+#     scale_color_manual(values = color_map) +
+#     labs(x = "Year", y = "Demand", color = "Scenario", linetype = "Scenario") +
+#     theme_minimal()
+# }
+# 
+# Regional demand: multi-page PDF; takes data frame of plots produced by
 # plot_regional_demand_comparison and combines them into a single multi-region pdf,
 # with each region labeled and a single legend per page. Currently legend is correct
 # except all legend keys have thin lines, when the GCAM scenarios should have thick
@@ -158,7 +317,7 @@ plot_regional_demand_comparison_pdf <- function(
     if (any(p_all$model[p_all$scenario_name==s] == "gcam")) color_map[s] <- "#e6550d"
   }
 
-  # Base plot (full data); we’ll paginate with ggforce::n_pages()
+  # Base plot (full data); we?ll paginate with ggforce::n_pages()
   base <- ggplot(p_all, aes(x = year, y = demand_value,
                             color = scenario_name, linetype = scenario_name)) +
     # Ensemble spaghetti (use iteration grouping)
