@@ -9,7 +9,7 @@
 # Results are saved in sub-directory given by "data_dir", "scen", and "data_subdir",
 # with "scen_case" appended to the file name.
 
-make_HD_LD_params_freq <- function(
+make_HL_params_freq <- function(
     year_vals,
     data_dir,
     out_dir,
@@ -20,10 +20,13 @@ make_HD_LD_params_freq <- function(
     hi_interval_max,
     lo_interval_min,
     lo_interval_max,
+    hi_param_name,
+    lo_param_name,
     save_outputs = TRUE
 ) {
   
-  message("Calculating HD and LD parameters for scenario ", scen)
+  message("Calculating ", hi_param_name, " and ", lo_param_name, 
+          " parameters for scenario ", scen)
   
   # Central output directory path
   if (save_outputs) {
@@ -37,23 +40,30 @@ make_HD_LD_params_freq <- function(
   param_data_FE_clean_sub <- readRDS(param_file_FE)
   
   # Define interval bounds
-  bounds <- list(
-    HD = list(min = hi_interval_min, max = hi_interval_max),
-    LD = list(min = lo_interval_min, max = lo_interval_max)
+  bounds <- setNames(
+    list(
+      H = list(min = hi_interval_min, max = hi_interval_max),
+      L = list(min = lo_interval_min, max = lo_interval_max)),
+    c(hi_param_name, lo_param_name)
   )
+
+  message("  Extracting demand in ", hi_param_name, "/", lo_param_name, 
+          " intervals for all regions and years")
   
-  message("  Extracting demand in HD/LD intervals for all regions and years")
-  
-  demand_intervals <- get_demand_intervals(year_vals, out_dir, scen_case, regions, bounds)
+  demand_intervals <- get_demand_intervals(year_vals, out_dir, scen_case, regions, 
+                                           bounds, hi_param_name, lo_param_name)
   
   if (save_outputs) {
     saveRDS(demand_intervals, 
             file.path(out_dir, paste0("demand_intervals", scen_case, ".RDS")))
   }
   
-  message("  Computing maximum-frequency iterations in HD/LD intervals")
+  message("  Computing maximum-frequency iterations in ", hi_param_name, "/", 
+          lo_param_name, " intervals")
   
-  max_iter_frequencies <- compute_max_iteration_frequencies(demand_intervals)
+  max_iter_frequencies <- compute_max_iteration_frequencies(demand_intervals,
+                                                            hi_param_name,
+                                                            lo_param_name)
   
   if (save_outputs) {
     saveRDS(max_iter_frequencies, 
@@ -62,7 +72,8 @@ make_HD_LD_params_freq <- function(
   
   message("  Building full iteration frequency table")
   
-  full_freq_table <- build_full_frequency_table(demand_intervals, max_iter_frequencies, regions)
+  full_freq_table <- build_full_frequency_table(demand_intervals, max_iter_frequencies, 
+                                                regions, hi_param_name, lo_param_name)
   
   if (save_outputs) {
     saveRDS(full_freq_table, 
@@ -89,7 +100,8 @@ make_HD_LD_params_freq <- function(
 # a type of food demand falling in given quantile; food types include Qn, Qs, Qtot, and Qs and
 # Qn simultaneously; quantiles include those defined for high demand and low demand as passed
 # in "bounds"
-get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds) {
+get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds,
+                                 hi_param_name, lo_param_name) {
   
   # loop over regions
   demand_intervals_list <- map(regions, function(r) {
@@ -106,7 +118,8 @@ get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds)
         distinct(iteration, year, GCAM_region_ID, Y.region, Qs.region, Qn.region, Qtot.region)
       
       # ---- Regular quantiles (Qs, Qn, Qtot) --------------------
-      regular_cases <- expand.grid(c("HD", "LD"), c("Qs", "Qn", "Qtot")) %>%
+      regular_cases <- expand.grid(c(hi_param_name, lo_param_name), 
+                                   c("Qs", "Qn", "Qtot")) %>%
         split(seq(nrow(.)))
       
       regular_results <- map_dfr(regular_cases, function(case_pair) {
@@ -123,7 +136,7 @@ get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds)
       })
       
       # ---- Special case: QsQn (intersection) --------------------
-      qsqn_cases <- expand.grid(c("HD", "LD"), "QsQn") %>%
+      qsqn_cases <- expand.grid(c(hi_param_name, lo_param_name), "QsQn") %>%
         split(seq(nrow(.)))
       
       qsqn_results <- map_dfr(qsqn_cases, function(case_pair) {
@@ -155,11 +168,11 @@ get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds)
 # calculate the iteration that appears with the highest frequency across 
 # years and deciles, for each region individually and for all regions combined,
 # and return as a data frame
-# compute_max_iteration_frequencies <- function(demand_result, data_dir, data_subdir, scen) {
-compute_max_iteration_frequencies <- function(demand_result) {
+compute_max_iteration_frequencies <- function(demand_result, hi_param_name, 
+                                              lo_param_name) {
   
   # interval/food type cases expressed as list of pairs
-  grid <- expand.grid(c("HD", "LD"), c("Qs", "Qn", "Qtot", "QsQn"))
+  grid <- expand.grid(c(hi_param_name, lo_param_name), c("Qs", "Qn", "Qtot", "QsQn"))
   case_list <- split(grid, seq(nrow(grid)))
   
   # for each case calculate max iteration frequencies for each region and globally
@@ -207,12 +220,14 @@ compute_max_iteration_frequencies <- function(demand_result) {
 }
 
 
-build_full_frequency_table <- function(demand_result, max_iterations, regions) {
+build_full_frequency_table <- function(demand_result, max_iterations, regions,
+                                       hi_param_name, lo_param_name) {
 
   # list of cases for which we want to find an iteration that falls within it
   # with maximum frequency
-  case_list <- c("HD_Qs", "HD_Qn", "HD_Qtot", "HD_QsQn",
-                 "LD_Qs", "LD_Qn", "LD_Qtot", "LD_QsQn")
+  params   <- c(hi_param_name, lo_param_name)
+  suffixes <- c("Qs", "Qn", "Qtot", "QsQn")
+  case_list <- as.vector(outer(params, suffixes, paste, sep = "_"))
   
   # define elements for constructing a table to hold the frequency results
   conditions <- list(
