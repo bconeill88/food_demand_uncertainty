@@ -15,29 +15,73 @@
 #
 ensure_package <- function(pkg, local_lib = NULL) {
   pkg <- as.character(substitute(pkg))
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
   
-  # Set default CRAN mirror if not already set
-  if (is.null(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
-    options(repos = c(CRAN = "https://cloud.r-project.org"))
+  # Helper: choose a writable user library
+  choose_userlib <- function() {
+    userlib <- Sys.getenv("R_LIBS_USER")
+    if (nzchar(userlib)) return(userlib)
+    file.path(path.expand("~"), "R", "library", paste0("R-", getRversion()))
   }
   
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    if (!is.null(local_lib)) {
-      if (!dir.exists(local_lib)) {
-        dir.create(local_lib, recursive = TRUE, showWarnings = FALSE)
-      }
-      install.packages(pkg, lib = local_lib)
-      library(pkg, character.only = TRUE, lib.loc = local_lib)
+  # If already installed somewhere on current .libPaths(), just attach
+  if (requireNamespace(pkg, quietly = TRUE)) {
+    suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+    return(invisible(TRUE))
+  }
+  
+  # Decide where to install:
+  # 1) If caller provided local_lib, use it.
+  # 2) Else, if first lib path is writable, use default behavior.
+  # 3) Else, install into a user library and prepend it.
+  if (is.null(local_lib)) {
+    first_lib <- .libPaths()[1]
+    if (dir.exists(first_lib) && file.access(first_lib, 2) == 0) {
+      install.packages(pkg, dependencies = TRUE)
+      suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+      return(invisible(TRUE))
     } else {
-      install.packages(pkg)
-      library(pkg, character.only = TRUE)
-    }
-  } else {
-    if (!is.null(local_lib)) {
-      library(pkg, character.only = TRUE, lib.loc = local_lib)
-    } else {
-      library(pkg, character.only = TRUE)
+      local_lib <- choose_userlib()
     }
   }
+  
+  # Ensure local_lib exists and is on .libPaths() first
+  if (!dir.exists(local_lib)) dir.create(local_lib, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(c(local_lib, .libPaths()))
+  
+  # Install into local_lib
+  install.packages(pkg, lib = local_lib, dependencies = TRUE)
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE, lib.loc = local_lib))
+  
+  invisible(TRUE)
 }
+
+
+# ensure_package <- function(pkg, local_lib = NULL) {
+#   pkg <- as.character(substitute(pkg))
+#   
+#   # Set default CRAN mirror if not already set
+#   if (is.null(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
+#     options(repos = c(CRAN = "https://cloud.r-project.org"))
+#   }
+#   
+#   if (!requireNamespace(pkg, quietly = TRUE)) {
+#     if (!is.null(local_lib)) {
+#       if (!dir.exists(local_lib)) {
+#         dir.create(local_lib, recursive = TRUE, showWarnings = FALSE)
+#       }
+#       install.packages(pkg, lib = local_lib)
+#       library(pkg, character.only = TRUE, lib.loc = local_lib)
+#     } else {
+#       install.packages(pkg)
+#       library(pkg, character.only = TRUE)
+#     }
+#   } else {
+#     if (!is.null(local_lib)) {
+#       library(pkg, character.only = TRUE, lib.loc = local_lib)
+#     } else {
+#       library(pkg, character.only = TRUE)
+#     }
+#   }
+# }
 
