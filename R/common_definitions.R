@@ -104,8 +104,9 @@ lo_max <- 5
 scen_list_demand_GCAM_ML <- 
   # list("Ref_ML_gcam_MLparams_bc")
   # list("Ref_ML_gcam_ens_bc")
-  list("Ref_ML_HP_gcam_ens_bc")
+  # list("Ref_ML_HP_gcam_ens_bc")
   # list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
+  list("Ref_ML_gcam_MLprice_ens_bc", "Ref_ML_gcam_MLincome_ens_bc", "Ref_ML_gcam_MLscale_ens_bc")
 
 # scenarios to run in 08_calculate_demand_GCAM_HDLD.R
 scen_list_demand_GCAM_HDLD <-
