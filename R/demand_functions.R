@@ -67,8 +67,8 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
                               inputdata, regions, output_dir, scen, case, 
                               progress = TRUE, save_result = TRUE) {
   
-  if(progress) message("  calculating demand for scenario ", scen, ", case ", case)
-
+  if(progress) message("\nCalculating demand for scenario ", scen, ", case ", case)
+  
   # if no regional parameters df, which would occur if the demand model has no fixed
   # effects, initialize to zero for each region and iteration
   if (is.null(regparams)) {
@@ -94,7 +94,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
   for (r in seq_along(regions)) {
     
     region_id <- regions[r]
-    if(progress) message("    starting region ", region_id)
+    if(progress) message("  Starting region ", region_id)
     
     # extract region-specific price/income data
     inputdata_region <- inputdata %>% filter(GCAM_region_ID == region_id)
@@ -103,10 +103,10 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
     # extract region-specific bias data for all iterations
     biasdata_region <- biasdata %>% filter(GCAM_region_ID == region_id)
     if (nrow(biasdata_region) == 0) stop("No biasdata for region ", region_id)
-
+    
     # extract region-specific parameters for all iterations
     regparams_region <- regparams %>% filter(GCAM_region_ID == region_id)
-
+    
     # split globalparams by iteration
     globalparams_byiter <- split(globalparams, globalparams$iteration)
     # remove names to ensure imap_dfr() works with numeric indices
@@ -149,7 +149,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
                                    regparams_reg_iter$staples_FE, 
                                    biasdata_reg_iter$RBs, 
                                    biasdata_reg_iter$RBn) # %>%
-
+      
       demand_reg_iter <- demand_reg_iter %>%
         
         # add iteration number, likelihood value
@@ -163,7 +163,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
         bind_cols(calc_price_elast(., param_structure)) %>%
         # add input data
         bind_cols(select(inputdata_region, Y, Ps, Pn, Y.region))
-
+      
       # include additional columns if present
       if ("gcam-consumer" %in% colnames(inputdata_region)) {
         demand_reg_iter <- bind_cols(select(inputdata_region, `gcam-consumer`), demand_reg_iter)
@@ -215,6 +215,8 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
       saveRDS(demand_reg, 
               file = file.path(pathname, paste0("demand_R", region_id, separator, 
                                                 case, ".RDS")))
+      if(progress) message("   Saved demand results for region ", region_id)
+      
     }
     
     # conditionally store regional result in named list
@@ -237,21 +239,18 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
 # and observed demand. This is repeated until convergence according to a specified 
 # tolerance.
 get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams, 
-                                    inputdata, regions, output_dir, scen, case, baseyr, 
-                                    Qs_min, Qn_min) {
-  
-  # set tolerance for matching observed regional demand, staples and non-staples
-  tol <- 0.01
-  
-  # set maximum iterations without converging
-  max_iterations <- 10
-  current_iteration <- 0
+                                 inputdata, regions, output_dir, scen, case, baseyr, 
+                                 Qs_min, Qn_min,
+                                 tol = 0.01, max_iterations = 5) {
   
   # define list of region names, iterations, and their combinations to loop over
-  region_names <- inputdata %>% filter(GCAM_region_ID %in% regions) %>%
-    pull(region) %>% unique
+  region_names <- inputdata %>%
+    filter(GCAM_region_ID %in% regions) %>%
+    pull(region) %>%
+    unique()
+  
   iterations <- globalparams$iteration %>% unique()
-  regs_iters <- expand_grid(reg_nm = region_names, iter = iterations)
+  regs_iters <- expand_grid(iter = iterations, reg_nm = region_names)
   
   # get input data for the base year for demand calculations
   inputdata_baseyr <- inputdata %>% filter(year == baseyr)
@@ -259,88 +258,284 @@ get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams,
   # loop over all regions and iterations, applying function to solve for bias terms 
   # for a given region and iteration in a single year; collect results into a single df;
   # display progress using progressr package
-  message("Calibrating base year demand for all regions and iterations...")
-  with_progress({
+  message("\nCalibrating base year demand for all regions and iterations...\n")
+  
+  # loop over each region and iteration
+  res <- pmap(regs_iters, function(iter, reg_nm) {
     
-    # Initialize the progress bar
-    p <- progressor(steps = nrow(regs_iters))
+    # initialize iteration counter for THIS (region, iteration) solve
+    # (previously this counter was global, which caused premature failure)
+    local_iter <- 0L
     
-    # loop
-    result_df <- pmap_dfr(regs_iters, function(reg_nm, iter) {
+    # initialize guess of bias adders at zero
+    # define by consumer group, region, and iteration; need these columns in call to 
+    # food.dmnd.wrapper() below
+    bias_terms_next <- expand_grid(
+      `gcam-consumer` = inputdata_baseyr$`gcam-consumer` %>% unique(),
+      iteration = iter,
+      region = reg_nm
+    ) %>%
+      # join to GCAM_region_ID
+      left_join(
+        inputdata_baseyr %>%
+          select(GCAM_region_ID, region) %>%
+          distinct(),
+        by = "region"
+      ) %>%
+      # assign zeros
+      mutate(RBs = 0, RBn = 0)
+    
+    # diagnostics code, including helper functions
+    
+    # keep a convergence trace for logging if this solve fails
+    keep_iters <- c(1:max_iterations)
+    #   sort(unique(c(
+    #   1:20,
+    #   seq(10, 100, by = 10),
+    #   seq(100, max_iterations, by = 100)
+    # )))
+    
+    conv_trace <- list()
+    
+    # collapse bias terms to one regional record, for one consumer group, because
+    # we will only be using regional demand, not consumer-specific (CURRENT: no 
+    # diffs exist yet)
+    collapse_current_to_region <- function(df) {
+      df %>%
+        select(iteration, GCAM_region_ID, region, RBs, RBn) %>%
+        distinct() %>%
+        slice(1)
+    }
+    
+    # collapse bias terms to one regional record for same reason (NEXT: diffs exist)
+    collapse_next_to_region <- function(df) {
+      df %>%
+        select(iteration, GCAM_region_ID, region, diff_s, diff_n, RBs, RBn) %>%
+        distinct() %>%
+        slice(1)
+    }
+    
+    # extract one regional row with absolute levels of demand (ref and predicted) 
+    # for this step (same reason: only need regional demand, not consumer-specific)
+    get_regional_levels <- function(reg_nm, demand_ref_baseyr, demand) {
       
-      # the progressor for the progress display
-      p()
+      ref_reg <- demand_ref_baseyr %>%
+        filter(region == reg_nm) %>%
+        select(region, Qs.region.ref = Qs.region, Qn.region.ref = Qn.region) %>%
+        distinct() %>%
+        slice(1)
       
-      # initialiZe guess of bias adders at zero
-      # define by consumer group, region, and iteration; need these columns in call to 
-      # food.dmnd.wrapper() below
-      bias_terms_next <- expand_grid(
-        `gcam-consumer` = inputdata_baseyr$`gcam-consumer` %>% unique(),
-        iteration = iter,
-        region = reg_nm) %>%
-        # join to GCAM_region_ID
-        left_join(inputdata_baseyr %>% select(GCAM_region_ID, region) %>% unique,
-                  by = "region") %>%
-        # assign zeros
-        mutate(RBs = 0, RBn = 0)
+      pred_reg <- demand %>%
+        filter(region == reg_nm) %>%
+        select(region, Qs.region.predict = Qs.region, Qn.region.predict = Qn.region) %>%
+        distinct() %>%
+        slice(1)
       
-      # infinite loop, break on convergence or max iterations
-      while(TRUE) {
+      ref_reg %>% inner_join(pred_reg, by = "region")
+    }
+    
+    # get range of decile-level demand
+    get_decile_spread <- function(reg_nm, demand) {
+      d <- demand %>% filter(region == reg_nm)
+      tibble(
+        Qs_min_dec = min(d$Qs, na.rm = TRUE),
+        Qs_max_dec = max(d$Qs, na.rm = TRUE),
+        Qn_min_dec = min(d$Qn, na.rm = TRUE),
+        Qn_max_dec = max(d$Qn, na.rm = TRUE)
+      )
+    }
+    
+    # get budget constraint diagnostics
+    get_budget_diag <- function(reg_nm, demand) {
+      d <- demand %>% filter(region == reg_nm)
+      
+      tibble(
+        alpha_m_min = min(d$alpha.m, na.rm = TRUE),
+        alpha_m_med = median(d$alpha.m, na.rm = TRUE),
+        alpha_m_max = max(d$alpha.m, na.rm = TRUE),
+        food_share_min = 1 - max(d$alpha.m, na.rm = TRUE),
+        food_share_med = 1 - median(d$alpha.m, na.rm = TRUE),
+        food_share_max = 1 - min(d$alpha.m, na.rm = TRUE),
+        budget_binds_any = any((1 - d$alpha.m) >= (1 - 1e-6), na.rm = TRUE)
+      )
+    }
+    
+    # build a 2-row table (staples / nonstaples) for one iteration step
+    make_trace_rows <- function(step, bias_current_reg, bias_next_reg, levels_reg) {
+      
+      tibble(
+        iter_step = step,
+        food_type = c("staples", "nonstaples"),
         
-        current_iteration <- current_iteration + 1
+        Q_ref  = c(levels_reg$Qs.region.ref[[1]],     levels_reg$Qn.region.ref[[1]]),
+        Q_pred = c(levels_reg$Qs.region.predict[[1]], levels_reg$Qn.region.predict[[1]]),
         
-        # update bias terms for this iteration
-        bias_terms_current <- bias_terms_next
+        bias_terms_current = c(bias_current_reg$RBs[[1]], bias_current_reg$RBn[[1]]),
+        bias_terms_next    = c(bias_next_reg$RBs[[1]],    bias_next_reg$RBn[[1]]),
         
-        # calculate demand with current bias terms
-        demand <- food.dmnd.wrapper(
-          globalparams = globalparams %>% filter(iteration == iter),
-          regparams = regparams,
-          biasdata = bias_terms_current,
-          Qs_min = Qs_min,
-          Qn_min = Qn_min,
-          inputdata = inputdata_baseyr,
-          regions = inputdata_baseyr %>% filter(region == reg_nm) %>% 
-            slice(1) %>% pull("GCAM_region_ID"),
-          output_dir = output_dir,
-          scen = scen,
-          case = case,
-          progress = FALSE,    # don't display messages
-          save_result = FALSE)
+        difference = c(bias_next_reg$diff_s[[1]], bias_next_reg$diff_n[[1]])
+      )
+    }
+    
+    # end of diagnostics code
+    
+    # infinite loop, break on convergence or max iterations
+    repeat {
+      
+      local_iter <- local_iter + 1L
+      
+      # update bias terms for this iteration
+      bias_terms_current <- bias_terms_next
+      
+      # calculate demand with current bias terms
+      demand <- food.dmnd.wrapper(
+        globalparams = globalparams %>% filter(iteration == iter),
+        regparams = regparams %>% filter(iteration == iter),
+        biasdata = bias_terms_current,
+        Qs_min = Qs_min,
+        Qn_min = Qn_min,
+        inputdata = inputdata_baseyr,
+        regions = inputdata_baseyr %>% 
+          filter(region == reg_nm) %>% 
+          slice(1) %>% 
+          pull(GCAM_region_ID),
+        output_dir = output_dir,
+        scen = scen,
+        case = case,
+        progress = FALSE,    # don't display messages
+        save_result = FALSE
+      )
+      
+      # calculate difference from observed (reference) consumption and update bias terms
+      bias_terms_next <- demand_ref_baseyr %>%
+        inner_join(
+          demand,
+          by = c("GCAM_region_ID", "region", "gcam-consumer", "year"),
+          suffix = c(".ref", ".predict")
+        ) %>%
+        # calculate differences in regional demand
+        mutate(
+          diff_s = Qs.region.predict - Qs.region.ref,
+          diff_n = Qn.region.predict - Qn.region.ref,
+          # update values of bias terms with these differences
+          RBs = RBs - diff_s,
+          RBn = RBn - diff_n
+        ) %>%
+        # keep only what we need for tolerance check and updated bias terms
+        select(iteration, GCAM_region_ID, region,
+               `gcam-consumer`, diff_s, diff_n, RBs, RBn) %>%
+        distinct()
+      
+      # record trace rows for selected iteration steps only
+      if (local_iter %in% keep_iters) {
         
-        # calculate difference from observed (reference) consumption and update bias terms
-        bias_terms_next <- demand_ref_baseyr %>%
-          inner_join(demand,
-                     by = c("GCAM_region_ID", "region", "gcam-consumer", "year"),
-                     suffix = c(".ref", ".predict")) %>%
-          # calculate differences in regional demand
-          mutate(diff_s = Qs.region.predict - Qs.region.ref,
-                 diff_n = Qn.region.predict - Qn.region.ref,
-                 # update values of bias terms with these differences
-                 RBs = RBs - diff_s,
-                 RBn = RBn - diff_n) %>%
-          # keep only what we need for tolerance check and updated bias terms
-          select(iteration, GCAM_region_ID, region, `gcam-consumer`, diff_s, diff_n, RBs, RBn) %>%
-          distinct()
+        bias_current_reg <- collapse_current_to_region(bias_terms_current)
+        bias_next_reg    <- collapse_next_to_region(bias_terms_next)
         
-        # if abs value of the difference is within tolerance, return bias values
-        if(abs(max(bias_terms_next$diff_s)) <= tol && abs(max(bias_terms_next$diff_n)) <= tol) {
-          return(bias_terms_next)
-        } 
+        levels_reg <- get_regional_levels(
+          reg_nm = reg_nm,
+          demand_ref_baseyr = demand_ref_baseyr,
+          demand = demand
+        )
         
-        # tolerance not achieved but max iterations reached
-        if(current_iteration == max_iterations) {
-          message("Maximum iterations reached when calibrating demand for ", reg_nm,
-                  " and iteration ", iteration, ".")
-          stop()
-        }
+        # range of demand over deciles
+        spread_reg <- get_decile_spread(reg_nm, demand)
+        
+        # budget constraint diagnostics
+        budget_diag <- get_budget_diag(reg_nm, demand)
+        
+        conv_trace[[length(conv_trace) + 1L]] <- make_trace_rows(
+          step = local_iter,
+          bias_current_reg = bias_current_reg,
+          bias_next_reg = bias_next_reg,
+          levels_reg = levels_reg
+        ) %>%
+          mutate(
+            Qs_min_dec = spread_reg$Qs_min_dec[[1]],
+            Qs_max_dec = spread_reg$Qs_max_dec[[1]],
+            Qn_min_dec = spread_reg$Qn_min_dec[[1]],
+            Qn_max_dec = spread_reg$Qn_max_dec[[1]],
+            alpha_m_min = budget_diag$alpha_m_min[[1]],
+            alpha_m_med = budget_diag$alpha_m_med[[1]],
+            alpha_m_max = budget_diag$alpha_m_max[[1]],
+            food_share_min = budget_diag$food_share_min[[1]],
+            food_share_med = budget_diag$food_share_med[[1]],
+            food_share_max = budget_diag$food_share_max[[1]],
+            budget_binds_any = budget_diag$budget_binds_any[[1]]
+          )
       }
-    })
+      
+      # if abs value of the difference is within tolerance, return bias values
+      # NOTE: tolerance check corrected to use max(abs(.)) rather than abs(max(.))
+      if (max(abs(bias_terms_next$diff_s), na.rm = TRUE) <= tol &&
+          max(abs(bias_terms_next$diff_n), na.rm = TRUE) <= tol) {
+        
+        return(list(
+          ok = TRUE,
+          bias = bias_terms_next %>%
+            select(iteration, GCAM_region_ID, region,
+                   `gcam-consumer`, RBs, RBn),
+          fail = NULL
+        ))
+      }
+      
+      # tolerance not achieved but max iterations reached
+      # log failure and return status instead of stopping execution
+      if (local_iter >= max_iterations) {
+        
+        msg <- paste0(
+          "Maximum iterations reached when calibrating demand for ",
+          reg_nm, " and iteration ", iter, "."
+        )
+        message(msg)
+        
+        # print regional convergence trace table to the log (selected steps only)
+        if (length(conv_trace) > 0) {
+          
+          trace_tbl <- bind_rows(conv_trace) %>%
+            arrange(iter_step, food_type)
+          
+          message("Convergence trace (regional; selected steps) for ",
+                  reg_nm, ", iteration ", iter, ":")
+          
+          print(trace_tbl, n = Inf, width = Inf)
+          
+        } else {
+          message("No convergence trace captured (unexpected).")
+        }
+        
+        return(list(
+          ok = FALSE,
+          bias = NULL,
+          fail = tibble(region = reg_nm, iteration = iter, reason = msg)
+        ))
+      }
+    }
   })
   
-  message("Calibration complete.")
-  return(result_df)
-} 
+  
+  # collect successful bias terms
+  bias_terms <- res %>%
+    keep(~ isTRUE(.x$ok)) %>%
+    map("bias") %>%
+    bind_rows()
+  
+  # collect failures
+  failures <- res %>%
+    keep(~ !isTRUE(.x$ok)) %>%
+    map("fail") %>%
+    bind_rows()
+  
+  message(
+    "Calibration complete. Failed (region, iteration) solves: ",
+    ifelse(is.null(failures), 0L, nrow(failures)), "."
+  )
+  
+  return(list(
+    bias_terms = bias_terms,
+    failures = failures
+  ))
+}
 
 # Function to calculate food demand for an ensemble of parameter values, with each
 # ensemble member bias corrected to the base year value of the total regional
@@ -373,13 +568,16 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
   # Get gcam reference scenario results to correct to; only total regional demand
   # is used, so doesn't matter which GCAM scenario is used; we use Ref_ML here
   demand_ref_baseyr <- 
-    readRDS(paste0("data/processed/", output_dir, 
-                   "/results_gcam/gcamoutput_Ref_ML.RDS")) %>%
+    readRDS(
+      paste0("data/processed/", output_dir, 
+             "/results_gcam/gcamoutput_Ref_ML.RDS")
+    ) %>%
     filter(year == baseyr) %>%
-    select(GCAM_region_ID, region, `gcam-consumer`, year, Qs.region, Qn.region)
+    select(GCAM_region_ID, region, `gcam-consumer`, year,
+           Qs.region, Qn.region)
   
   # Calculate decile-specific bias terms for each ensemble member
-  bias_terms <- get_bias_terms_solve(
+  cal <- get_bias_terms_solve(
     demand_ref_baseyr = demand_ref_baseyr,
     globalparams = globalparams,
     regparams = regparams,
@@ -390,24 +588,65 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
     case = case,
     baseyr = baseyr,
     Qs_min = Qs_min, 
-    Qn_min = Qn_min)
+    Qn_min = Qn_min
+  )
   
-  # Use the bias terms calculated in the base year to calculate demand in all future 
-  # years, applying minimum demand constraints in those years as well (since they 
-  # are part of the food.dmnd() function).
-  food.dmnd.wrapper(
-    globalparams = globalparams,
-    regparams = regparams,
-    biasdata = bias_terms,
-    Qs_min = Qs_min,
-    Qn_min = Qn_min,
-    inputdata = inputdata %>% filter(year >= baseyr),
-    regions = regionIDs,
-    output_dir = output_dir,
-    scen = scen,
-    case = case, 
-    progress = TRUE,
-    save_result = save_result)
+  bias_terms <- cal$bias_terms
+  failures   <- cal$failures
+  
+  # Check whether there are any successful solves, stop if not
+  if (is.null(bias_terms) || nrow(bias_terms) == 0 || 
+      !all(c("iteration","region") %in% names(bias_terms))) {
+    stop("No successful calibrations; bias_terms is empty. See failures output.")
+  }
+  
+  # Identify which iterations successfully calibrated for ALL regions
+  # (iterations with any failed region are excluded from projection)
+  target_regions <- inputdata %>%
+    filter(GCAM_region_ID %in% regionIDs, year == baseyr) %>%
+    pull(region) %>%
+    unique()
+  
+  ok_iters <- bias_terms %>%
+    distinct(iteration, region) %>%
+    count(iteration, name = "n_regions_ok") %>%
+    filter(n_regions_ok == length(target_regions)) %>%
+    pull(iteration)
+  
+  message(
+    "Iterations with successful calibration for all regions: ",
+    length(ok_iters), " / ", length(unique(globalparams$iteration)), "."
+  )
+  
+  if (!is.null(failures) && nrow(failures) > 0) {
+    message("Failed (region, iteration) pairs: ", nrow(failures), ".")
+  }
+  
+  # demand projections
+  if(TRUE) {
+    
+    # Filter parameters and bias terms to fully successful iterations only
+    globalparams_ok <- globalparams %>% filter(iteration %in% ok_iters)
+    bias_terms_ok   <- bias_terms %>% filter(iteration %in% ok_iters)
+    
+    # Use the bias terms calculated in the base year to calculate demand in all future 
+    # years, applying minimum demand constraints in those years as well (since they 
+    # are part of the food.dmnd() function).
+    food.dmnd.wrapper(
+      globalparams = globalparams_ok,
+      regparams = regparams,
+      biasdata = bias_terms_ok,
+      Qs_min = Qs_min,
+      Qn_min = Qn_min,
+      inputdata = inputdata %>% filter(year >= baseyr),
+      regions = regionIDs,
+      output_dir = output_dir,
+      scen = scen,
+      case = case, 
+      progress = TRUE,
+      save_result = save_result
+    )
+  }
 }
 
 # function for calculating demand from observed prices and income, global and
@@ -446,335 +685,335 @@ food.dmnd.obs <- function(globalparamdata,FEdata,obsdata,scen,regions) {
 
 if(FALSE) {
   
-# function to calculate food demand (using food.dmnd() from ambrosia) without fixed effects
-# given a dataframe of price and income data (possibly including year and decile
-# information if the price and income paths are from GCAM), and a single row of a 
-# parameter data file (one iteration); returns a dataframe combining price/income
-# data, year/decile information (if present), parameters (unless this is commented
-# out, which is the default case), demand (including Qtot), both income elasticities,
-# four price elasticities, and log likelihood of the sample
-food.dmnd.plus <- function(princdata,globalparams) {
-  
-  # get parameter structure needed for food.dmnd() and calculate food demand
-  param_structure <- vec2param(as.vector(t(select(globalparams,c('As':'pnscl')))))
-  demand <- food.dmnd(princdata$Ps,princdata$Pn,princdata$Y,params = param_structure)
-  # add total demand
-  demand$Qtot <- demand$Qs + demand$Qn
-  # calculate income elasticities and add to results
-  inc_elast <- calc_income_elast(princdata$Y,param_structure)
-  demand <- cbind(demand,inc_elast)
-  # calculate price elasticities, needs budget shares and income elasticities in 'demand'
-  price_elast <- calc_price_elast(demand,param_structure)
-  demand <- cbind(demand,price_elast)
-  # package price/income data, parameters, demand/elasticities, likelihood and return
-  output <- cbind(Y=princdata$Y,Ps=princdata$Ps,Pn=princdata$Pn,
-                  # comment this out to keep parameter values out of the output to save space
-                  #                  do.call("rbind", replicate(nrow(princdata), paramdata, simplify = FALSE)),
-                  demand,LL = globalparams[['LL']])
-  # package year and decile information with output if present
-  if("gcam-consumer" %in% colnames(princdata)) {
-    output <- cbind(`gcam-consumer`=princdata$`gcam-consumer`,output)
-  }
-  if("year" %in% colnames(princdata)) {
-    output <- cbind(year=princdata$year,output)
-  }
-  return(output)
-}
-
-
-# function for calculating regional food demand (without bias correction) and 
-# elasticities with the FE model, for a set of one or more parameter samples, 
-# a single set of price/income assumptions, and a set of one or more regions;
-# function calls food.dmnd.plus() to calculate "global" food demand and elasticities,
-# then adds fixed effects; it tests whether income and prices are uniform across
-# regions, and if so global demand is calculated only once and used for all regions,
-# if not it is recalculated for each region; 
-# saves regional results to results sub-directory indicated by "scen"; if file
-# names need a special extension, it is indicated by the "case" argument; if 
-# scen = "Obs" (calculating demand based on observed prices/income), results for
-# the single region calculated are returned, not saved
-food.dmnd.plus.FE.regions <- function(paramdata,FEdata,princdata,scen,case,regions) {
-  
-  print(paste0("  calculating demand for scenario ",scen))
-  
-  # set flag for whether income and price scenario is globally uniform or not
-  
-  # no regional information in price/income input file
-  if(!any(c("region", "GCAM_region_ID") %in% colnames(princdata))) {
+  # function to calculate food demand (using food.dmnd() from ambrosia) without fixed effects
+  # given a dataframe of price and income data (possibly including year and decile
+  # information if the price and income paths are from GCAM), and a single row of a 
+  # parameter data file (one iteration); returns a dataframe combining price/income
+  # data, year/decile information (if present), parameters (unless this is commented
+  # out, which is the default case), demand (including Qtot), both income elasticities,
+  # four price elasticities, and log likelihood of the sample
+  food.dmnd.plus <- function(princdata,globalparams) {
     
-    # set flag
-    globalprices <- TRUE
-    
-    # must be regional information, test whether it is uniform or not
-  } else {
-    
-    # find how many unique values of income and prices there are across regions
-    check_regions <- princdata %>%
-      # group data for all regions together for each year and decile
-      # this will include all iterations if there are more than one
-      group_by(year, `gcam-consumer`) %>%
-      # find unique values of three variables in each group; would have used
-      # reframe(), but unix version of dplyr is too old
-      summarise(Y = list(unique(Y)), Ps = list(unique(Ps)), Pn = list(unique(Pn)),
-                .groups = "drop") %>%
-      # find max number of unique values across three variables, for each row
-      mutate(n = pmax(lengths(Y), lengths(Ps), lengths(Pn))) %>%
-      # Keep only rows with more than one unique value for at least one variable
-      filter(n > 1)
-    
-    # set flag
-    globalprices <- nrow(check_regions) == 0
-  }
-  
-  # loop over regions
-  for (r in 1:length(regions)) {
-    
-    print(paste0("    starting region ",regions[r]))
-    
-    # calculate global demand
-    
-    # if prices /income are uniform across regions, only calculate global demand once
-    if (globalprices & r == 1) {
-      
-      # calculate demand for all parameter iterations
-      demand_glob <- lapply(seq_len(nrow(paramdata)),function(z) {
-        
-        # for each iteration, calculate demand for the price/income scenario;
-        # this assumes princdata includes one time series for use by all regions
-        princdata %>%
-          food.dmnd.plus(paramdata[z,]) %>%
-          mutate(iteration = as.numeric(paramdata[z,'iteration']))
-      }) %>%
-        bind_rows()
-      
-      # if prices or income vary across regions, calculate global demand for each region  
-    } else if (!globalprices) {
-      
-      # extract regional income/price scenario
-      princdata_region <- princdata %>%
-        # ensure matching data types
-        filter(as.numeric(GCAM_region_ID) == as.numeric(regions[r]))
-      if (nrow(princdata_region) == 0) stop(paste("No princdata for region ", regions[r]))
-      
-      # calculate demand for all parameter iterations
-      demand_glob <- lapply(seq_len(nrow(paramdata)),function(z) {
-        
-        # keep track of progress
-        if(z %% 500 == 0) print(paste0("    reached iteration ",z,
-                                       " for calculating global demand"))
-        
-        # for each iteration, calculate demand for the price/income scenario for
-        # this region
-        princdata_region %>%
-          food.dmnd.plus(paramdata[z,]) %>%
-          mutate(iteration = as.numeric(paramdata[z,'iteration']))
-      }) %>%
-        bind_rows()
+    # get parameter structure needed for food.dmnd() and calculate food demand
+    param_structure <- vec2param(as.vector(t(select(globalparams,c('As':'pnscl')))))
+    demand <- food.dmnd(princdata$Ps,princdata$Pn,princdata$Y,params = param_structure)
+    # add total demand
+    demand$Qtot <- demand$Qs + demand$Qn
+    # calculate income elasticities and add to results
+    inc_elast <- calc_income_elast(princdata$Y,param_structure)
+    demand <- cbind(demand,inc_elast)
+    # calculate price elasticities, needs budget shares and income elasticities in 'demand'
+    price_elast <- calc_price_elast(demand,param_structure)
+    demand <- cbind(demand,price_elast)
+    # package price/income data, parameters, demand/elasticities, likelihood and return
+    output <- cbind(Y=princdata$Y,Ps=princdata$Ps,Pn=princdata$Pn,
+                    # comment this out to keep parameter values out of the output to save space
+                    #                  do.call("rbind", replicate(nrow(princdata), paramdata, simplify = FALSE)),
+                    demand,LL = globalparams[['LL']])
+    # package year and decile information with output if present
+    if("gcam-consumer" %in% colnames(princdata)) {
+      output <- cbind(`gcam-consumer`=princdata$`gcam-consumer`,output)
     }
-    
-    #    print(paste0("      finished global demand for region ",regions[r]))
-    
-    # calculate regional demand
-    
-    # group global demand/elasticities results by iteration
-    demand_glob_byiter <- split(demand_glob, demand_glob$iteration)
-    
-    # get FE data for the region and group by iteration
-    FEdata_reg <- FEdata[FEdata$GCAM_region_ID == regions[r],]
-    FEdata_byiter <- split(FEdata_reg, FEdata_reg$iteration)
-    
-    # initialize list to hold regional results for each iteration
-    demand_reg <- demand_glob_byiter
-    
-    # loop over iterations (should be able to do this with mapply)
-    for(j in 1:length(demand_glob_byiter)) {
-      
-      # get iteration number of j'th element of global demand results
-      iteration <- as.numeric(names(demand_glob_byiter)[[j]])
-      
-      # Retrieve corresponding FEdata for the iteration
-      FEdata_iter <- FEdata_byiter[[as.character(iteration)]]
-      
-      # Ensure FEdata_iter is not NULL or missing
-      if (is.null(FEdata_iter) || nrow(FEdata_iter) == 0)
-        stop(paste("Missing FE data for iteration ", iteration))
-      
-      # add regional fixed effect to global demand, and region name/ID
-      demand_reg[[j]] <- demand_glob_byiter[[j]] %>%
-        mutate(Qs = Qs + FEdata_iter$staples_FE,
-               Qtot = Qs + Qn,
-               GCAM_region_ID = unique(FEdata_iter$GCAM_region_ID),
-               region = unique(FEdata_iter$region)) %>%
-        # update budget shares
-        mutate(alpha.s = Qs*Ps/Y, alpha.n = Qn*Pn/Y) %>%
-        mutate(alpha.m = 1-alpha.s-alpha.n)
-      
-      # update price elasticities based on updated budget shares
-      param_structure <- vec2param(as.vector(t(select(paramdata[j,],c('As':'pnscl')))))
-      price_elast <- calc_price_elast(demand_reg[[j]],param_structure)
-      demand_reg[[j]] <- mutate(demand_reg[[j]],
-                                elast.ss = price_elast$elast.ss,
-                                elast.nn = price_elast$elast.nn,
-                                elast.sn = price_elast$elast.sn,
-                                elast.ns = price_elast$elast.ns)
+    if("year" %in% colnames(princdata)) {
+      output <- cbind(year=princdata$year,output)
     }
-    # recombine over iterations
-    demand_reg <- bind_rows(demand_reg)
+    return(output)
+  }
+  
+  
+  # function for calculating regional food demand (without bias correction) and 
+  # elasticities with the FE model, for a set of one or more parameter samples, 
+  # a single set of price/income assumptions, and a set of one or more regions;
+  # function calls food.dmnd.plus() to calculate "global" food demand and elasticities,
+  # then adds fixed effects; it tests whether income and prices are uniform across
+  # regions, and if so global demand is calculated only once and used for all regions,
+  # if not it is recalculated for each region; 
+  # saves regional results to results sub-directory indicated by "scen"; if file
+  # names need a special extension, it is indicated by the "case" argument; if 
+  # scen = "Obs" (calculating demand based on observed prices/income), results for
+  # the single region calculated are returned, not saved
+  food.dmnd.plus.FE.regions <- function(paramdata,FEdata,princdata,scen,case,regions) {
     
-    #    print(paste0("      finished adding fixed effect to demand for region ",regions[r]))
+    print(paste0("  calculating demand for scenario ",scen))
     
-    # if demand is calculated based on observations, return results since
-    # the call to this function will be for only one region and results saved
-    # in other code
-    if(scen=="Obs") {
-      return(demand_reg)
-      # in all other cases save regional demand to results directory
+    # set flag for whether income and price scenario is globally uniform or not
+    
+    # no regional information in price/income input file
+    if(!any(c("region", "GCAM_region_ID") %in% colnames(princdata))) {
+      
+      # set flag
+      globalprices <- TRUE
+      
+      # must be regional information, test whether it is uniform or not
     } else {
-      pathname <- paste("data/processed",data_dir,scen,"results",sep="/")
-      if(case == "") separator <- "" else separator <- "_"
-      save(demand_reg,file = paste0(pathname,"/demand_R",regions[r],
-                                    separator,case,".RData"))
+      
+      # find how many unique values of income and prices there are across regions
+      check_regions <- princdata %>%
+        # group data for all regions together for each year and decile
+        # this will include all iterations if there are more than one
+        group_by(year, `gcam-consumer`) %>%
+        # find unique values of three variables in each group; would have used
+        # reframe(), but unix version of dplyr is too old
+        summarise(Y = list(unique(Y)), Ps = list(unique(Ps)), Pn = list(unique(Pn)),
+                  .groups = "drop") %>%
+        # find max number of unique values across three variables, for each row
+        mutate(n = pmax(lengths(Y), lengths(Ps), lengths(Pn))) %>%
+        # Keep only rows with more than one unique value for at least one variable
+        filter(n > 1)
+      
+      # set flag
+      globalprices <- nrow(check_regions) == 0
     }
-  } # end region loop
-}
-
-# function to bias correct ambrosia per capita demand results based on 
-# corresponding GCAM simulation, enforcing non-negative demand and cap on total
-# food budget share; non-negative constraint is enforced both before bias-
-# correction (to match GCAM approach) and after (to avoid inducing negative 
-# demand); cap on food share is achieved by reducing non-staples consumption first,
-# since it will normally be a less efficient source of calories than staples;
-# note ambrosia enforces this cap for un-bias-corrected demand already, but GCAM
-# does it post-bias-correction so need to add it here for ambrosia as well
-bias_correct_ambrosia_demand <- function(scen,case,regions,max_alphat) {
-  
-  # get gcam results and store in clearer variable name
-  if(scen == "Ref_ML_gcam2") {
-    gcam_file <- paste0("incpricedem_Ref_ML_gcam.RData")
-  } else if(scen == "Ref_HD_gcam2") {
-    gcam_file <- paste0("incpricedem_Ref_HD_gcam.RData")
-  } else {
-    gcam_file <- paste0("incpricedem_",scen,".RData")
+    
+    # loop over regions
+    for (r in 1:length(regions)) {
+      
+      print(paste0("    starting region ",regions[r]))
+      
+      # calculate global demand
+      
+      # if prices /income are uniform across regions, only calculate global demand once
+      if (globalprices & r == 1) {
+        
+        # calculate demand for all parameter iterations
+        demand_glob <- lapply(seq_len(nrow(paramdata)),function(z) {
+          
+          # for each iteration, calculate demand for the price/income scenario;
+          # this assumes princdata includes one time series for use by all regions
+          princdata %>%
+            food.dmnd.plus(paramdata[z,]) %>%
+            mutate(iteration = as.numeric(paramdata[z,'iteration']))
+        }) %>%
+          bind_rows()
+        
+        # if prices or income vary across regions, calculate global demand for each region  
+      } else if (!globalprices) {
+        
+        # extract regional income/price scenario
+        princdata_region <- princdata %>%
+          # ensure matching data types
+          filter(as.numeric(GCAM_region_ID) == as.numeric(regions[r]))
+        if (nrow(princdata_region) == 0) stop(paste("No princdata for region ", regions[r]))
+        
+        # calculate demand for all parameter iterations
+        demand_glob <- lapply(seq_len(nrow(paramdata)),function(z) {
+          
+          # keep track of progress
+          if(z %% 500 == 0) print(paste0("    reached iteration ",z,
+                                         " for calculating global demand"))
+          
+          # for each iteration, calculate demand for the price/income scenario for
+          # this region
+          princdata_region %>%
+            food.dmnd.plus(paramdata[z,]) %>%
+            mutate(iteration = as.numeric(paramdata[z,'iteration']))
+        }) %>%
+          bind_rows()
+      }
+      
+      #    print(paste0("      finished global demand for region ",regions[r]))
+      
+      # calculate regional demand
+      
+      # group global demand/elasticities results by iteration
+      demand_glob_byiter <- split(demand_glob, demand_glob$iteration)
+      
+      # get FE data for the region and group by iteration
+      FEdata_reg <- FEdata[FEdata$GCAM_region_ID == regions[r],]
+      FEdata_byiter <- split(FEdata_reg, FEdata_reg$iteration)
+      
+      # initialize list to hold regional results for each iteration
+      demand_reg <- demand_glob_byiter
+      
+      # loop over iterations (should be able to do this with mapply)
+      for(j in 1:length(demand_glob_byiter)) {
+        
+        # get iteration number of j'th element of global demand results
+        iteration <- as.numeric(names(demand_glob_byiter)[[j]])
+        
+        # Retrieve corresponding FEdata for the iteration
+        FEdata_iter <- FEdata_byiter[[as.character(iteration)]]
+        
+        # Ensure FEdata_iter is not NULL or missing
+        if (is.null(FEdata_iter) || nrow(FEdata_iter) == 0)
+          stop(paste("Missing FE data for iteration ", iteration))
+        
+        # add regional fixed effect to global demand, and region name/ID
+        demand_reg[[j]] <- demand_glob_byiter[[j]] %>%
+          mutate(Qs = Qs + FEdata_iter$staples_FE,
+                 Qtot = Qs + Qn,
+                 GCAM_region_ID = unique(FEdata_iter$GCAM_region_ID),
+                 region = unique(FEdata_iter$region)) %>%
+          # update budget shares
+          mutate(alpha.s = Qs*Ps/Y, alpha.n = Qn*Pn/Y) %>%
+          mutate(alpha.m = 1-alpha.s-alpha.n)
+        
+        # update price elasticities based on updated budget shares
+        param_structure <- vec2param(as.vector(t(select(paramdata[j,],c('As':'pnscl')))))
+        price_elast <- calc_price_elast(demand_reg[[j]],param_structure)
+        demand_reg[[j]] <- mutate(demand_reg[[j]],
+                                  elast.ss = price_elast$elast.ss,
+                                  elast.nn = price_elast$elast.nn,
+                                  elast.sn = price_elast$elast.sn,
+                                  elast.ns = price_elast$elast.ns)
+      }
+      # recombine over iterations
+      demand_reg <- bind_rows(demand_reg)
+      
+      #    print(paste0("      finished adding fixed effect to demand for region ",regions[r]))
+      
+      # if demand is calculated based on observations, return results since
+      # the call to this function will be for only one region and results saved
+      # in other code
+      if(scen=="Obs") {
+        return(demand_reg)
+        # in all other cases save regional demand to results directory
+      } else {
+        pathname <- paste("data/processed",data_dir,scen,"results",sep="/")
+        if(case == "") separator <- "" else separator <- "_"
+        save(demand_reg,file = paste0(pathname,"/demand_R",regions[r],
+                                      separator,case,".RData"))
+      }
+    } # end region loop
   }
-  load(paste("data/processed",data_dir,gcam_results_dir,gcam_file,sep="/"))
-  incpricedem_gcam <- incpricedem
   
-  for(r in regions) {
+  # function to bias correct ambrosia per capita demand results based on 
+  # corresponding GCAM simulation, enforcing non-negative demand and cap on total
+  # food budget share; non-negative constraint is enforced both before bias-
+  # correction (to match GCAM approach) and after (to avoid inducing negative 
+  # demand); cap on food share is achieved by reducing non-staples consumption first,
+  # since it will normally be a less efficient source of calories than staples;
+  # note ambrosia enforces this cap for un-bias-corrected demand already, but GCAM
+  # does it post-bias-correction so need to add it here for ambrosia as well
+  bias_correct_ambrosia_demand <- function(scen,case,regions,max_alphat) {
     
-    # get ambrosia results and store in clearer variable name
-    separator <- ifelse(case == "", "", "_")
-    ambrosia_file <- paste0("demand_R",r,separator,case,".RData")
-    load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
-    demand_reg_amb <- demand_reg
+    # get gcam results and store in clearer variable name
+    if(scen == "Ref_ML_gcam2") {
+      gcam_file <- paste0("incpricedem_Ref_ML_gcam.RData")
+    } else if(scen == "Ref_HD_gcam2") {
+      gcam_file <- paste0("incpricedem_Ref_HD_gcam.RData")
+    } else {
+      gcam_file <- paste0("incpricedem_",scen,".RData")
+    }
+    load(paste("data/processed",data_dir,gcam_results_dir,gcam_file,sep="/"))
+    incpricedem_gcam <- incpricedem
     
-    # combine gcam and ambrosia dataframes, bias correct, enforce non-negative
-    # demand, enforce cap on food budget share, and keep only needed columns
-    keepcols <- c(colnames(demand_reg_amb),"RBs","RBn","alpha.t")
-    demand_reg_amb <- 
-      inner_join(demand_reg_amb,incpricedem_gcam,
-                 by = c("year","gcam-consumer","GCAM_region_ID","region"),
-                 # no extension for ambrosia columns so they keep original names
-                 suffix = c("",".gcam")) %>%
-      # replace negative demand with zero before bias correction, update shares
-      mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
-      mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
-      # bias correct ambrosia demand
-      mutate(Qs = Qs + RBs,Qn = Qn + RBn,Qtot = Qs + Qn) %>%
-      # # replace negative demand with zero after bias correction, update shares
-      # mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
-      # mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
-      # # Compute total food budget share
-      mutate(alpha.t = alpha.s + alpha.n) %>%
-      # # adjust consumption levels if they violate the food budget constraint
-      # mutate(
-      #   alpha.n = case_when(
-      #     alpha.t <= max_alphat ~ alpha.n,  # No change if within limit
-      #     alpha.n >= (alpha.t - max_alphat) ~ alpha.n - (alpha.t - max_alphat),  # Reduce alpha.n first
-      #     TRUE ~ 0  # If alpha.n isn't enough, set it to zero
-      #   ),
-      #   alpha.s = case_when(
-      #     alpha.t <= max_alphat ~ alpha.s,  # No change if within limit
-      #     alpha.n == 0 ~ max_alphat,  # Reduce alpha.s only if alpha.n is already zero
-      #     TRUE ~ alpha.s  # Otherwise, keep original value
-      #   ),
-      #   alpha.t = alpha.s + alpha.n  # Recalculate total budget share
-      # ) %>%
-      # # Recalculate demand based on adjusted budget shares
-      # mutate(Qs = alpha.s * Y, Qn = alpha.n * Y, Qtot = Qs + Qn) %>%
-      select(keepcols)  # Keep relevant columns
-    
-    # save bias-corrected results, with _bc added to file name
-    save(demand_reg_amb,file = paste("data/processed",data_dir,scen,"results",
-                                     str_replace(ambrosia_file,".RData","_bc.RData"),
-                                     sep="/"))
+    for(r in regions) {
+      
+      # get ambrosia results and store in clearer variable name
+      separator <- ifelse(case == "", "", "_")
+      ambrosia_file <- paste0("demand_R",r,separator,case,".RData")
+      load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
+      demand_reg_amb <- demand_reg
+      
+      # combine gcam and ambrosia dataframes, bias correct, enforce non-negative
+      # demand, enforce cap on food budget share, and keep only needed columns
+      keepcols <- c(colnames(demand_reg_amb),"RBs","RBn","alpha.t")
+      demand_reg_amb <- 
+        inner_join(demand_reg_amb,incpricedem_gcam,
+                   by = c("year","gcam-consumer","GCAM_region_ID","region"),
+                   # no extension for ambrosia columns so they keep original names
+                   suffix = c("",".gcam")) %>%
+        # replace negative demand with zero before bias correction, update shares
+        mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
+        mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
+        # bias correct ambrosia demand
+        mutate(Qs = Qs + RBs,Qn = Qn + RBn,Qtot = Qs + Qn) %>%
+        # # replace negative demand with zero after bias correction, update shares
+        # mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
+        # mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
+        # # Compute total food budget share
+        mutate(alpha.t = alpha.s + alpha.n) %>%
+        # # adjust consumption levels if they violate the food budget constraint
+        # mutate(
+        #   alpha.n = case_when(
+        #     alpha.t <= max_alphat ~ alpha.n,  # No change if within limit
+        #     alpha.n >= (alpha.t - max_alphat) ~ alpha.n - (alpha.t - max_alphat),  # Reduce alpha.n first
+        #     TRUE ~ 0  # If alpha.n isn't enough, set it to zero
+        #   ),
+        #   alpha.s = case_when(
+        #     alpha.t <= max_alphat ~ alpha.s,  # No change if within limit
+        #     alpha.n == 0 ~ max_alphat,  # Reduce alpha.s only if alpha.n is already zero
+        #     TRUE ~ alpha.s  # Otherwise, keep original value
+        #   ),
+        #   alpha.t = alpha.s + alpha.n  # Recalculate total budget share
+        # ) %>%
+        # # Recalculate demand based on adjusted budget shares
+        # mutate(Qs = alpha.s * Y, Qn = alpha.n * Y, Qtot = Qs + Qn) %>%
+        select(keepcols)  # Keep relevant columns
+      
+      # save bias-corrected results, with _bc added to file name
+      save(demand_reg_amb,file = paste("data/processed",data_dir,scen,"results",
+                                       str_replace(ambrosia_file,".RData","_bc.RData"),
+                                       sep="/"))
+    }
   }
-}
-
-# function to bias correct an ensemble of ambrosia per capita demand results 
-# to the base year value of a target ambrosia scenario. This does not bias-correct
-# in the sense of matching to observations (necessarily), but rather so that all 
-# members of the ensemble will start from the same value in the base year. The 
-# target is taken to be a bias-corrected ambrosia scenario that uses a gcam 
-# income/price scenario defined in "scen" and a set of parameters defined in 
-# "case" ("bias-corrected" here means the ambrosia scenario applies the gcam 
-# regional bias adders to its results in order to match the observations 
-# calibrated to by gcam in the base year; so actual in practice the ensemble
-# bias correction is in fact matching observations by extension). After the
-# ensemble bias correction, constraints for non-negative demand and for maximum
-# total food budget share are applied and demand adjusted if necessary.
-bias_correct_ambrosia_ensemble <- function(scen,case,regions,bias_yr,max_alphat)  {
   
-  # loop over regions
-  for(r in regions) {
+  # function to bias correct an ensemble of ambrosia per capita demand results 
+  # to the base year value of a target ambrosia scenario. This does not bias-correct
+  # in the sense of matching to observations (necessarily), but rather so that all 
+  # members of the ensemble will start from the same value in the base year. The 
+  # target is taken to be a bias-corrected ambrosia scenario that uses a gcam 
+  # income/price scenario defined in "scen" and a set of parameters defined in 
+  # "case" ("bias-corrected" here means the ambrosia scenario applies the gcam 
+  # regional bias adders to its results in order to match the observations 
+  # calibrated to by gcam in the base year; so actual in practice the ensemble
+  # bias correction is in fact matching observations by extension). After the
+  # ensemble bias correction, constraints for non-negative demand and for maximum
+  # total food budget share are applied and demand adjusted if necessary.
+  bias_correct_ambrosia_ensemble <- function(scen,case,regions,bias_yr,max_alphat)  {
     
-    # get bias-corrected ambrosia results for gcam income/price scenario; this is
-    # target scenario to bias correct the ensemble to; store in clearer variable name
-    separator <- ifelse(case == "", "", "_")
-    ambrosia_file <- paste0("demand_R",r,separator,case,"_bc.RData")
-    load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
-    demand_reg_target <- demand_reg
-    
-    # target demand in base year to bias correct to
-    Qs_target <- demand_reg_target[year == bias_yr,'Qs']
-    Qn_target <- demand_reg_target[year == bias_yr,'Qn']
-    
-    # get ambrosia ensemble results for the region; this is the ensemble to be
-    # bias corrected; store in clearer variable name
-    ambrosia_file <- paste0("demand_R",r,".RData")
-    load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
-    demand_reg_ens <- demand_reg
-    
-    # bias correct each ensemble member
-    demand_reg_ens_bc <- demand_reg_ens %>%
-      group_by(iteration) %>%
-      # calculate and apply ensemble bias correction for each iteration
-      mutate(RBs_ens = Qs_target - Qs[year == bias_yr],
-             RBn_ens = Qn_target - Qn[year == bias_yr],
-             Qs = Qs + RBs_ens,
-             Qn = Qn + RBn_ens) %>%
-      ungroup %>%
-      # replace negative demand with zero after bias correction, update shares
-      mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
-      mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
-      # Compute total food budget share
-      mutate(alpha.t = alpha.s + alpha.n) %>%
-      # adjust consumption levels if they violate the food budget constraint
-      mutate(
-        alpha.n = case_when(
-          alpha.t <= max_alphat ~ alpha.n,  # No change if within limit
-          alpha.n >= (alpha.t - max_alphat) ~ alpha.n - (alpha.t - max_alphat),  # Reduce alpha.n first
-          TRUE ~ 0  # If alpha.n isn't enough, set it to zero
-        ),
-        alpha.s = case_when(
-          alpha.t <= max_alphat ~ alpha.s,  # No change if within limit
-          alpha.n == 0 ~ max_alphat,  # Reduce alpha.s only if alpha.n is already zero
-          TRUE ~ alpha.s  # Otherwise, keep original value
-        ),
-        alpha.t = alpha.s + alpha.n  # Recalculate total budget share
-      ) %>%
-      # Recalculate demand based on adjusted budget shares
-      mutate(Qs = alpha.s * Y, Qn = alpha.n * Y, Qtot = Qs + Qn)
+    # loop over regions
+    for(r in regions) {
+      
+      # get bias-corrected ambrosia results for gcam income/price scenario; this is
+      # target scenario to bias correct the ensemble to; store in clearer variable name
+      separator <- ifelse(case == "", "", "_")
+      ambrosia_file <- paste0("demand_R",r,separator,case,"_bc.RData")
+      load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
+      demand_reg_target <- demand_reg
+      
+      # target demand in base year to bias correct to
+      Qs_target <- demand_reg_target[year == bias_yr,'Qs']
+      Qn_target <- demand_reg_target[year == bias_yr,'Qn']
+      
+      # get ambrosia ensemble results for the region; this is the ensemble to be
+      # bias corrected; store in clearer variable name
+      ambrosia_file <- paste0("demand_R",r,".RData")
+      load(paste("data/processed",data_dir,scen,"results",ambrosia_file,sep="/"))
+      demand_reg_ens <- demand_reg
+      
+      # bias correct each ensemble member
+      demand_reg_ens_bc <- demand_reg_ens %>%
+        group_by(iteration) %>%
+        # calculate and apply ensemble bias correction for each iteration
+        mutate(RBs_ens = Qs_target - Qs[year == bias_yr],
+               RBn_ens = Qn_target - Qn[year == bias_yr],
+               Qs = Qs + RBs_ens,
+               Qn = Qn + RBn_ens) %>%
+        ungroup %>%
+        # replace negative demand with zero after bias correction, update shares
+        mutate(Qs = pmax(Qs, 0), Qn = pmax(Qn, 0), Qtot = Qs + Qn) %>%
+        mutate(alpha.s = Qs / Y, alpha.n = Qn / Y, alpha.m = 1 - alpha.s - alpha.n) %>%
+        # Compute total food budget share
+        mutate(alpha.t = alpha.s + alpha.n) %>%
+        # adjust consumption levels if they violate the food budget constraint
+        mutate(
+          alpha.n = case_when(
+            alpha.t <= max_alphat ~ alpha.n,  # No change if within limit
+            alpha.n >= (alpha.t - max_alphat) ~ alpha.n - (alpha.t - max_alphat),  # Reduce alpha.n first
+            TRUE ~ 0  # If alpha.n isn't enough, set it to zero
+          ),
+          alpha.s = case_when(
+            alpha.t <= max_alphat ~ alpha.s,  # No change if within limit
+            alpha.n == 0 ~ max_alphat,  # Reduce alpha.s only if alpha.n is already zero
+            TRUE ~ alpha.s  # Otherwise, keep original value
+          ),
+          alpha.t = alpha.s + alpha.n  # Recalculate total budget share
+        ) %>%
+        # Recalculate demand based on adjusted budget shares
+        mutate(Qs = alpha.s * Y, Qn = alpha.n * Y, Qtot = Qs + Qn)
+    }
   }
-}
-
+  
 } # end if statement
