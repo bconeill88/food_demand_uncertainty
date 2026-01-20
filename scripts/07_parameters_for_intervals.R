@@ -2,8 +2,16 @@
 # representing uncertainty space (e.g., representing the top 5% of outcomes,
 # or bottom 5%, etc.). This is currently applied either to demand outcomes to 
 # derive high or low demand (HD, LD) parameter sets, or to differences in demand
-# between scenarios with different prices to derive high or low price reponses
+# between scenarios with different prices to derive high or low price response
 # (HPR, LPR) parameter sets.
+#
+# Also save demand projections associated with these individual scenarios, for all
+# regions in a single file, for convenient use in other scripts. Currently this 
+# also includes saving the ML demand projections in the same format.
+
+# TO DO:
+#   Rewrite code at top in style of 08 code to define "outcome" as ABS or DIFF and
+# then define directories, etc, based on that.
 
 # load functions
 source("R/common_definitions.R")
@@ -34,16 +42,18 @@ lo_name <- "LD"
 hi_col_name <- paste0(hi_name, "_Qtot")
 lo_col_name <- paste0(lo_name, "_Qtot")
 
-# define scenario cas; specific to demand or demand differences
-scen_case <- "_ens_bc"
-# scen_case <- "_diffs_ens_bc"
+# define scenario case; specific to demand or demand differences
+# scen_case <- "_ens_bc"
+scen_case <- "_diffs_ens_bc"
 
 # path to location for saving results; specific to demand or demand differences
-results_path <- file.path("data", "processed", procdata_dir, 
-                          procdata_subdir_RefMLgcam)
 # results_path <- file.path("data", "processed", procdata_dir, 
-#                           procdata_subdir_RefMLgcam, demand_diffs_subdir)
+#                           procdata_subdir_RefMLgcam)
+results_path <- file.path("data", "processed", procdata_dir,
+                          procdata_subdir_RefMLgcam, demand_diffs_subdir)
 
+if(FALSE) {
+  
 message("Identifying parameters for H/L parameters")
 
 # calculate parameters by taking iteration that falls most frequently in high/low intervals
@@ -241,3 +251,38 @@ if(lo_name == "LPR") {
   saveRDS(lo_scen, file.path(scen_results_path,
                              paste0("demand_diffs_allregions_", lo_name, "params.RDS")))
 }
+
+# For completeness, save demand (and demand difference) projections for ML scenario 
+# in same form as other scenario results.
+# Should move this somewhere more logical in final version of code.
+# demand results
+iter_ML <- readRDS(
+  file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RDS")) %>%
+  filter(measure == "ML") %>%
+  pull(iteration)
+scen_results_path <- 
+  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam)
+scen_results <- map_dfr(reg_list, function(r) {
+  readRDS(file.path(scen_results_path, paste0("demand_R", r, "_ens_bc.RDS"))) %>%
+    filter(iteration == iter_ML)
+})
+saveRDS(scen_results, file.path(scen_results_path,
+                           paste0("demand_allregions_MLparams.RDS")))
+
+}
+
+# demand difference results
+iter_ML <- readRDS(
+  file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RDS")) %>%
+  filter(measure == "ML") %>%
+  pull(iteration)
+scen_results_path <- 
+  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
+            demand_diffs_subdir)
+scen_results <- map_dfr(reg_list, function(r) {
+  readRDS(file.path(scen_results_path, 
+                    paste0("demand_R", r, "_diffs_ens_bc.RDS"))) %>%
+    filter(iteration == iter_ML)
+})
+saveRDS(scen_results, file.path(scen_results_path,
+                                paste0("demand_diffs_allregions_MLparams.RDS")))
