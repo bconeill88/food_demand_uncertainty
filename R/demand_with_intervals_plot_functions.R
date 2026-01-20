@@ -1,4 +1,265 @@
-# functions supporting the 08_plot_demand_with_intervals.R main script
+# Functions supporting the 08_plot_demand_with_intervals.R main script
+
+# Helper: round up ymax to a nice increment; for use in pdf creation with plots
+# sharing same ymax.
+nice_ymax <- function(x, step = 0.25) {
+  if (is.na(x) || !is.finite(x)) return(NA_real_)
+  ceiling(x / step) * step
+}
+
+# Helper: build ensemble uncertainty ribbons (full range + central CI)
+# Returns a standardized ribbon table compatible with downstream plotting
+build_ensemble_ribbon_data <- function(
+    df,
+    reg_num,
+    demand_cols,
+    demand_levels,
+    ci_level = 0.90,
+    year_min = 2015,
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID"
+) {
+  
+  # CI level must be strictly positive; 1.0 implies full range
+  stopifnot(ci_level > 0, ci_level <= 1)
+  
+  # ---- Filter to plotting domain (years, region, consumer group) ----
+  out_df <- df %>%
+    dplyr::filter(.data$year >= year_min)
+  
+  if (consumer_col %in% names(out_df)) {
+    out_df <- out_df %>% dplyr::filter(.data[[consumer_col]] == consumer_value)
+  }
+  
+  if (region_col %in% names(out_df)) {
+    out_df <- out_df %>% dplyr::filter(.data[[region_col]] == reg_num)
+  }
+  
+  # ---- Prepare CI parameters ----
+  alpha    <- (1 - ci_level) / 2
+  ci_label <- paste0(round(ci_level * 100), "% CI")
+  
+  # ---- Long-form ensemble draws (per iteration) ----
+  ensemble_long <- out_df %>%
+    select(iteration, year, dplyr::all_of(demand_cols)) %>%
+    pivot_longer(
+      cols      = dplyr::all_of(demand_cols),
+      names_to  = "demand_type",
+      values_to = "demand_value"
+    ) %>%
+    mutate(
+      GCAM_region_ID = as.integer(reg_num),
+      demand_type    = factor(demand_type, levels = demand_levels)
+    )
+  
+  # ---- Compute range and central CI by year and demand type ----
+  ensemble_band <- ensemble_long %>%
+    group_by(GCAM_region_ID, year, demand_type) %>%
+    summarise(
+      ymin = min(demand_value, na.rm = TRUE),
+      ymax = max(demand_value, na.rm = TRUE),
+      lo   = stats::quantile(demand_value, probs = alpha,     na.rm = TRUE, names = FALSE),
+      hi   = stats::quantile(demand_value, probs = 1 - alpha, na.rm = TRUE, names = FALSE),
+      .groups = "drop"
+    )
+  
+  # ---- Assemble ribbon rows (Range + CI) ----
+  ribbon_data <- dplyr::bind_rows(
+    ensemble_band %>%
+      transmute(
+        GCAM_region_ID,
+        year,
+        demand_type,
+        band        = "Range",
+        ribbon_ymin = ymin,
+        ribbon_ymax = ymax
+      ),
+    ensemble_band %>%
+      dplyr::transmute(
+        GCAM_region_ID,
+        year,
+        demand_type,
+        band        = ci_label,
+        ribbon_ymin = lo,
+        ribbon_ymax = hi
+      )
+  ) %>%
+    # Columns included for compatibility with combined plot data
+    dplyr::mutate(
+      demand_value  = NA_real_,
+      scenario_name = NA_character_,
+      model         = "ensemble_band",
+      line_role     = NA_character_,
+      iteration     = NA_integer_
+    )
+  
+  list(
+    ribbon_data = ribbon_data,
+    ci_label    = ci_label
+  )
+}
+
+# Helper: 
+reshape_scenario_long <- function(
+    df,
+    scen_name,
+    model_set,
+    line_role,
+    reg_num,
+    year_min,
+    demand_cols,
+    demand_levels,
+    consumer_group = NULL,
+    consumer_col = "gcam-consumer",
+    region_col = "GCAM_region_ID"
+) {
+  if (is.null(df) || is.null(scen_name)) return(NULL)
+  
+  reg_num_int <- as.integer(reg_num)
+  
+  out <- df %>%
+    mutate(
+      !!region_col := as.integer(.data[[region_col]])
+    ) %>%
+    filter(
+      year >= year_min,
+      .data[[region_col]] == reg_num_int
+    )
+  
+  if (!is.null(consumer_group) && consumer_col %in% names(out)) {
+    out <- out %>% filter(.data[[consumer_col]] == consumer_group)
+  }
+  
+  out %>%
+    select(all_of(c(region_col, "year", demand_cols))) %>%
+    pivot_longer(
+      cols = all_of(demand_cols),
+      names_to = "demand_type",
+      values_to = "demand_value"
+    ) %>%
+    mutate(
+      GCAM_region_ID = reg_num_int,
+      demand_type = factor(demand_type, levels = demand_levels),
+      consumer_group = consumer_group,
+      scenario_name = scen_name,
+      model = model_set,
+      line_role = line_role,
+      iteration = NA_integer_,
+      band = NA_character_,
+      ribbon_ymin = NA_real_,
+      ribbon_ymax = NA_real_
+    )
+}
+
+# Helper: 
+make_scenario_style_maps <- function(p_lines,
+                                     set1_col = "#e6550d",
+                                     set2_col = "#3182bd") {
+  
+  scen_levels <- sort(unique(p_lines$scenario_name))
+  scen_levels <- scen_levels[!is.na(scen_levels)]
+  
+  # linetypes (default solid; override from line_role)
+  lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
+  lr_tbl <- p_lines %>%
+    filter(!is.na(line_role)) %>%
+    distinct(scenario_name, line_role)
+  if (nrow(lr_tbl) > 0) {
+    lt_map[lr_tbl$scenario_name] <- lr_tbl$line_role
+  }
+  
+  # colors (default set1; override for set2)
+  color_map <- setNames(rep(set1_col, length(scen_levels)), scen_levels)
+  model_by_scen <- p_lines %>%
+    filter(!is.na(scenario_name), !is.na(model)) %>%
+    group_by(scenario_name) %>%
+    summarise(model = first(model), .groups = "drop")
+  
+  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
+  if (length(set2_names) > 0) {
+    color_map[intersect(names(color_map), set2_names)] <- set2_col
+  }
+  
+  list(color_map = color_map, lt_map = lt_map)
+}
+
+# Helper: 
+make_band_fill_map <- function(p_ribbon,
+                               range_col = "grey85",
+                               other_col = "grey70") {
+  
+  band_levels <- unique(p_ribbon$band)
+  band_levels <- band_levels[!is.na(band_levels)]
+  band_levels <- c("Range", setdiff(band_levels, "Range"))
+  
+  fill_values <- setNames(rep(other_col, length(band_levels)), band_levels)
+  if ("Range" %in% names(fill_values)) fill_values["Range"] <- range_col
+  
+  list(
+    band_levels = band_levels,
+    fill_values = fill_values
+  )
+}
+
+# Helper: compute per-region quantiles (CI and optionally range) for a single year;
+# for use with bar plots of demand range by region
+build_year_ci_bar_data <- function(
+    df,
+    target_year,
+    value_col,                      # e.g., "Qs.region", "Qn.region", "Qtot.region", or a diff variable
+    ci_level = 0.90,
+    include_range = FALSE,
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID",
+    iteration_col = "iteration"
+) {
+  
+  stopifnot(ci_level > 0, ci_level <= 1)
+  stopifnot(value_col %in% names(df))
+  
+  alpha <- (1 - ci_level) / 2
+  
+  out <- df %>%
+    dplyr::filter(.data$year == target_year)
+  
+  # optional filter for consumer group if column exists
+  if (consumer_col %in% names(out)) {
+    out <- out %>% dplyr::filter(.data[[consumer_col]] == consumer_value)
+  }
+  
+  # guardrails
+  required_cols <- c(region_col, iteration_col, "year", value_col)
+  missing_cols  <- setdiff(required_cols, names(out))
+  if (length(missing_cols) > 0) {
+    stop("build_year_ci_bar_data(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # summarize across iterations within region for the target year
+  sum_ci <- out %>%
+    dplyr::group_by(.data[[region_col]]) %>%
+    dplyr::summarise(
+      n_draws = dplyr::n(),
+      med = stats::quantile(.data[[value_col]], probs = 0.5, na.rm = TRUE, names = FALSE),
+      lo  = stats::quantile(.data[[value_col]], probs = alpha, na.rm = TRUE, names = FALSE),
+      hi  = stats::quantile(.data[[value_col]], probs = 1 - alpha, na.rm = TRUE, names = FALSE),
+      ymin = if (include_range) min(.data[[value_col]], na.rm = TRUE) else NA_real_,
+      ymax = if (include_range) max(.data[[value_col]], na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    ) %>%
+    dplyr::rename(GCAM_region_ID = .data[[region_col]]) %>%
+    dplyr::mutate(
+      GCAM_region_ID = as.integer(GCAM_region_ID),
+      target_year    = as.integer(target_year),
+      value_col      = value_col,
+      ci_level       = ci_level,
+      ci_label       = paste0(round(ci_level * 100), "% CI")
+    )
+  
+  sum_ci
+}
 
 # Regional demand: single-region plot that shows regional demand over time with
 # separate panels for Qs, Qn, and Qtotal, for a sub-sample of the ambrosia
@@ -19,128 +280,64 @@ plot_regional_demand_comparison <- function(
     return_data = FALSE
 ) {
   
-  stopifnot(ci_level > 0, ci_level < 1)
+  stopifnot(ci_level > 0, ci_level <= 1)
   
   # --- Ensemble ribbons (range + central CI), years >= 2015 ---
-  # Match the scenario filter as requested:
-  ensemble_df <- demand_reg %>%
-    filter(
-      year >= 2015
-    )
+  ribbon_res <- build_ensemble_ribbon_data(
+    df            = demand_reg,
+    reg_num       = reg_num,
+    demand_cols   = c("Qs.region", "Qn.region", "Qtot.region"),
+    demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+    ci_level      = ci_level,
+    year_min      = 2015,
+    consumer_col  = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col    = "GCAM_region_ID"
+  )
   
-  if ("gcam-consumer" %in% names(ensemble_df)) {
-    ensemble_df <- ensemble_df %>% filter(`gcam-consumer` == "FoodDemand_Group1")
-  }
-  
-  # If demand_reg contains multiple regions, enforce region filter when available
-  if ("GCAM_region_ID" %in% names(ensemble_df)) {
-    ensemble_df <- ensemble_df %>% filter(GCAM_region_ID == reg_num)
-  }
-  
-  alpha <- (1 - ci_level) / 2
-  
-  ensemble_long <- ensemble_df %>%
-    select(iteration, year, Qs.region, Qn.region, Qtot.region) %>%
-    pivot_longer(
-      c(Qs.region, Qn.region, Qtot.region),
-      names_to  = "demand_type",
-      values_to = "demand_value"
-    ) %>%
-    mutate(
-      GCAM_region_ID = as.character(reg_num),
-      demand_type = factor(demand_type, levels = c("Qs.region", "Qn.region", "Qtot.region"))
-    )
-  
-  # Summarise across iterations for ribbons
-  ensemble_band <- ensemble_long %>%
-    group_by(GCAM_region_ID, year, demand_type) %>%
-    summarise(
-      ymin = min(demand_value, na.rm = TRUE),
-      ymax = max(demand_value, na.rm = TRUE),
-      lo   = quantile(demand_value, probs = alpha,     na.rm = TRUE, names = FALSE),
-      hi   = quantile(demand_value, probs = 1 - alpha, na.rm = TRUE, names = FALSE),
-      .groups = "drop"
-    )
-  
-  ci_label <- paste0(round(ci_level * 100), "% CI")
-  
-  # Convert bands into "ribbon rows" that can live in p_all
-  ribbon_data <- bind_rows(
-    ensemble_band %>%
-      transmute(
-        GCAM_region_ID,
-        year,
-        demand_type,
-        band = "Range",
-        ribbon_ymin = ymin,
-        ribbon_ymax = ymax
-      ),
-    ensemble_band %>%
-      transmute(
-        GCAM_region_ID,
-        year,
-        demand_type,
-        band = ci_label,
-        ribbon_ymin = lo,
-        ribbon_ymax = hi
-      )
-  ) %>%
-    mutate(
-      # line-related fields present for compatibility but unused for ribbons
-      demand_value  = NA_real_,
-      scenario_name = NA_character_,
-      model         = "ensemble_band",
-      line_role     = NA_character_,
-      iteration     = NA_integer_
-    )
-  
-  # --- Helper for single scenarios (set 1 vs set 2) ---
-  reshape_scenario <- function(scen_df, label, model_tag, role) {
-    if (is.null(scen_df) || is.null(label)) return(tibble())
-    
-    scen_df %>%
-      filter(
-        `gcam-consumer` == "FoodDemand_Group1",
-        GCAM_region_ID  == reg_num,
-        year >= 2015
-      ) %>%
-      select(year, Qs.region, Qn.region, Qtot.region) %>%
-      pivot_longer(
-        c(Qs.region, Qn.region, Qtot.region),
-        names_to  = "demand_type",
-        values_to = "demand_value"
-      ) %>%
-      mutate(
-        GCAM_region_ID = as.character(reg_num),
-        scenario_name  = label,
-        model          = model_tag,  # "set1" or "set2"
-        line_role      = role,       # "solid", "dashed", "dotted"
-        iteration      = NA_integer_,
-        band           = NA_character_,
-        ribbon_ymin    = NA_real_,
-        ribbon_ymax    = NA_real_,
-        demand_type    = factor(demand_type, levels = c("Qs.region", "Qn.region", "Qtot.region"))
-      )
-  }
+  ribbon_data <- ribbon_res$ribbon_data
+  ci_label    <- ribbon_res$ci_label
   
   # --- Build comparison scenario data for any non-NULL inputs ---
-  comparison_data <- tibble()
-  
-  # Set 1
   comparison_data <- bind_rows(
-    comparison_data,
-    reshape_scenario(scen_solid_1,  scen_solid_name_1,  "set1", "solid"),
-    reshape_scenario(scen_dashed_1, scen_dashed_name_1, "set1", "dashed"),
-    reshape_scenario(scen_dotted_1, scen_dotted_name_1, "set1", "dotted")
+    reshape_scenario_long(scen_solid_1,  scen_solid_name_1,  "set1", "solid",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1"),
+    
+    reshape_scenario_long(scen_dashed_1, scen_dashed_name_1, "set1", "dashed",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1"),
+    
+    reshape_scenario_long(scen_dotted_1, scen_dotted_name_1, "set1", "dotted",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1"),
+    
+    reshape_scenario_long(scen_solid_2,  scen_solid_name_2,  "set2", "solid",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1"),
+    
+    reshape_scenario_long(scen_dashed_2, scen_dashed_name_2, "set2", "dashed",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1"),
+    
+    reshape_scenario_long(scen_dotted_2, scen_dotted_name_2, "set2", "dotted",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+                          demand_levels = c("Qs.region", "Qn.region", "Qtot.region"),
+                          consumer_group = "FoodDemand_Group1")
   )
   
-  # Set 2
-  comparison_data <- bind_rows(
-    comparison_data,
-    reshape_scenario(scen_solid_2,  scen_solid_name_2,  "set2", "solid"),
-    reshape_scenario(scen_dashed_2, scen_dashed_name_2, "set2", "dashed"),
-    reshape_scenario(scen_dotted_2, scen_dotted_name_2, "set2", "dotted")
-  )
+  if (is.null(comparison_data)) comparison_data <- tibble()
   
   # Combine ribbons + scenarios
   out <- bind_rows(ribbon_data, comparison_data)
@@ -210,12 +407,6 @@ plot_regional_demand_comparison_pdf <- function(
     ensemble_name = "Emulator"   # retained for compatibility; not used for ribbons
 ) {
   
-  # Helper: round up ymax to a nice increment
-  nice_ymax <- function(x, step = 0.25) {
-    if (is.na(x) || !is.finite(x)) return(NA_real_)
-    ceiling(x / step) * step
-  }
-  
   # Join region names and set factor order for demand_type
   p_all <- p_all %>%
     mutate(GCAM_region_ID = as.character(GCAM_region_ID)) %>%
@@ -256,31 +447,13 @@ plot_regional_demand_comparison_pdf <- function(
   p_ribbon <- p_all %>% filter(!is.na(band))
   p_lines  <- p_all %>% filter(!is.na(scenario_name))
   
-  # Linetype map from line_role (scenario lines only)
-  scen_levels <- sort(unique(p_lines$scenario_name))
-  lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
-  lr_tbl <- p_lines %>%
-    filter(!is.na(line_role)) %>%
-    distinct(scenario_name, line_role)
-  lt_map[lr_tbl$scenario_name] <- lr_tbl$line_role
+  scen_styles <- make_scenario_style_maps(p_lines)
+  lt_map    <- scen_styles$lt_map
+  color_map <- scen_styles$color_map
   
-  # Colors: set1 orange; set2 blue (hard-wired)
-  color_map <- setNames(rep("#e6550d", length(scen_levels)), scen_levels)
-  model_by_scen <- p_lines %>%
-    filter(!is.na(scenario_name), !is.na(model)) %>%
-    group_by(scenario_name) %>%
-    summarise(model = first(model), .groups = "drop")
-  
-  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
-  color_map[intersect(names(color_map), set2_names)] <- "#3182bd"
-  
-  # Fill map for ribbons. Ensure legend order is Range first, then CI.
-  band_levels <- unique(p_ribbon$band)
-  band_levels <- band_levels[!is.na(band_levels)]
-  band_levels <- c("Range", setdiff(band_levels, "Range"))
-  
-  fill_values <- setNames(rep("grey70", length(band_levels)), band_levels)
-  if ("Range" %in% names(fill_values)) fill_values["Range"] <- "grey85"
+  band_styles <- make_band_fill_map(p_ribbon)
+  band_levels <- band_styles$band_levels
+  fill_values <- band_styles$fill_values
   
   p_ribbon <- p_ribbon %>%
     mutate(band = factor(band, levels = band_levels))
@@ -415,7 +588,7 @@ plot_decile_demand_comparison <- function(
     return_data = FALSE
 ) {
   
-  stopifnot(ci_level > 0 && ci_level < 1)
+  stopifnot(ci_level > 0 && ci_level <= 1)
   
   required_cols <- c("GCAM_region_ID", "year", "iteration",
                      "gcam-consumer", "Qs", "Qn", "Qtot")
@@ -426,52 +599,27 @@ plot_decile_demand_comparison <- function(
   }
   
   # ---------------------------------------------------------------------------
-  # Helper: reshape scenario to long form
-  reshape_scenario <- function(df, scen_name, model_set, line_role) {
-    if (is.null(df) || is.null(scen_name)) return(NULL)
-    
-    df %>%
-      filter(
-        year >= 2015,
-        GCAM_region_ID == reg_num,
-        `gcam-consumer` == consumer_group
-      ) %>%
-      select(GCAM_region_ID, year, Qs, Qn, Qtot) %>%
-      pivot_longer(
-        cols = c(Qs, Qn, Qtot),
-        names_to = "demand_type",
-        values_to = "demand_value"
-      ) %>%
-      mutate(
-        scenario_name = scen_name,
-        model = model_set,
-        line_role = line_role,
-        band = NA_character_,
-        ribbon_ymin = NA_real_,
-        ribbon_ymax = NA_real_
-      )
-  }
-  
-  # ---------------------------------------------------------------------------
   # Ensemble ribbons
-  ens_long <- demand_reg %>%
-    filter(
-      year >= 2015,
-      GCAM_region_ID == reg_num,
-      `gcam-consumer` == consumer_group
-    ) %>%
-    select(GCAM_region_ID, year, iteration, Qs, Qn, Qtot) %>%
-    pivot_longer(
-      cols = c(Qs, Qn, Qtot),
-      names_to = "demand_type",
-      values_to = "demand_value"
-    )
+  ribbon_res <- build_ensemble_ribbon_data(
+    df             = demand_reg,
+    reg_num        = reg_num,
+    demand_cols    = c("Qs", "Qn", "Qtot"),
+    demand_levels  = c("Qs", "Qn", "Qtot"),
+    ci_level       = ci_level,
+    year_min       = 2015,
+    consumer_col   = "gcam-consumer",
+    consumer_value = consumer_group,
+    region_col     = "GCAM_region_ID"
+  )
   
-  if (nrow(ens_long) == 0) {
+  ribbon_data <- ribbon_res$ribbon_data
+  ci_label    <- ribbon_res$ci_label  # keep if you reference it later for fills/legend
+  
+  if (nrow(ribbon_data) == 0) {
     out_empty <- tibble(
-      GCAM_region_ID = integer(),
+      GCAM_region_ID = character(),
       year = integer(),
-      demand_type = character(),
+      demand_type = factor(character(), levels = c("Qs", "Qn", "Qtot")),
       demand_value = numeric(),
       band = character(),
       ribbon_ymin = numeric(),
@@ -479,70 +627,64 @@ plot_decile_demand_comparison <- function(
       scenario_name = character(),
       model = character(),
       line_role = character(),
+      iteration = integer(),
       consumer_group = character()
     )
     if (return_data) return(out_empty)
     return(ggplot() + theme_void())
   }
   
-  alpha <- (1 - ci_level) / 2
-  ci_label <- sprintf("%d%% CI", round(ci_level * 100))
-  
-  ribbon_data <- ens_long %>%
-    group_by(GCAM_region_ID, year, demand_type) %>%
-    summarise(
-      y_min = min(demand_value, na.rm = TRUE),
-      y_max = max(demand_value, na.rm = TRUE),
-      y_lo  = quantile(demand_value, probs = alpha,     na.rm = TRUE),
-      y_hi  = quantile(demand_value, probs = 1 - alpha, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
+  # The decile PDF code expects this column to exist
+  ribbon_data <- ribbon_data %>%
     mutate(
-      scenario_name = NA_character_,
-      model = NA_character_,
-      line_role = NA_character_
-    ) %>%
-    transmute(
-      GCAM_region_ID, year, demand_type,
-      demand_value = NA_real_,
-      band = "Range",
-      ribbon_ymin = y_min,
-      ribbon_ymax = y_max,
-      scenario_name, model, line_role
-    ) %>%
-    bind_rows(
-      ens_long %>%
-        group_by(GCAM_region_ID, year, demand_type) %>%
-        summarise(
-          ribbon_ymin = quantile(demand_value, probs = alpha,     na.rm = TRUE),
-          ribbon_ymax = quantile(demand_value, probs = 1 - alpha, na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        mutate(
-          demand_value = NA_real_,
-          band = ci_label,
-          scenario_name = NA_character_,
-          model = NA_character_,
-          line_role = NA_character_
-        )
+      consumer_group = consumer_group,
+      demand_type = factor(demand_type, levels = c("Qs", "Qn", "Qtot"))
     )
   
   # ---------------------------------------------------------------------------
   # Scenario overlays
   comparison_data <- bind_rows(
-    reshape_scenario(scen_solid_1,  scen_solid_name_1,  "set1", "solid"),
-    reshape_scenario(scen_dashed_1, scen_dashed_name_1, "set1", "dashed"),
-    reshape_scenario(scen_dotted_1, scen_dotted_name_1, "set1", "dotted"),
-    reshape_scenario(scen_solid_2,  scen_solid_name_2,  "set2", "solid"),
-    reshape_scenario(scen_dashed_2, scen_dashed_name_2, "set2", "dashed"),
-    reshape_scenario(scen_dotted_2, scen_dotted_name_2, "set2", "dotted")
+    reshape_scenario_long(scen_solid_1,  scen_solid_name_1,  "set1", "solid",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group),
+    
+    reshape_scenario_long(scen_dashed_1, scen_dashed_name_1, "set1", "dashed",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group),
+    
+    reshape_scenario_long(scen_dotted_1, scen_dotted_name_1, "set1", "dotted",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group),
+    
+    reshape_scenario_long(scen_solid_2,  scen_solid_name_2,  "set2", "solid",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group),
+    
+    reshape_scenario_long(scen_dashed_2, scen_dashed_name_2, "set2", "dashed",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group),
+    
+    reshape_scenario_long(scen_dotted_2, scen_dotted_name_2, "set2", "dotted",
+                          reg_num = reg_num, year_min = 2015,
+                          demand_cols = c("Qs", "Qn", "Qtot"),
+                          demand_levels = c("Qs", "Qn", "Qtot"),
+                          consumer_group = consumer_group)
   )
   
+  if (is.null(comparison_data)) comparison_data <- tibble()
+  
   out <- bind_rows(ribbon_data, comparison_data) %>%
-    mutate(
-      consumer_group = consumer_group,
-      demand_type = factor(demand_type, levels = c("Qs", "Qn", "Qtot"))
-    )
+    mutate(demand_type = factor(demand_type, levels = c("Qs", "Qn", "Qtot")))
   
   if (return_data) return(out)
   
@@ -662,31 +804,32 @@ plot_decile_demand_comparison_pdf <- function(
   p_ribbon <- p_all %>% filter(!is.na(band))
   p_lines  <- p_all %>% filter(!is.na(scenario_name))
   
-  # Linetype map from line_role (scenario lines only)
-  scen_levels <- sort(unique(p_lines$scenario_name))
-  lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
-  lr_tbl <- p_lines %>%
-    filter(!is.na(line_role)) %>%
-    distinct(scenario_name, line_role)
-  lt_map[lr_tbl$scenario_name] <- lr_tbl$line_role
+  # ---- Harmonized y-axis limits (global across all regions/deciles) ----
+  ymax_sn <- p_all %>%
+    dplyr::filter(demand_type %in% c("Qs", "Qn")) %>%
+    dplyr::summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+    dplyr::pull(mx) %>%
+    nice_ymax(step = 0.25)
   
-  # Colors: set1 orange; set2 blue (hard-wired; same as regional)
-  color_map <- setNames(rep("#e6550d", length(scen_levels)), scen_levels)
-  model_by_scen <- p_lines %>%
-    filter(!is.na(scenario_name), !is.na(model)) %>%
-    group_by(scenario_name) %>%
-    summarise(model = first(model), .groups = "drop")
+  ymax_tot <- p_all %>%
+    dplyr::filter(demand_type %in% c("Qtot")) %>%
+    dplyr::summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+    dplyr::pull(mx) %>%
+    nice_ymax(step = 0.25)
   
-  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
-  color_map[intersect(names(color_map), set2_names)] <- "#3182bd"
+  # ---- Data to force facet y ranges via geom_blank() ----
+  min_year <- suppressWarnings(min(p_all$year, na.rm = TRUE))
+  if (!is.finite(min_year)) min_year <- 2015
   
-  # Fill map for ribbons. Ensure legend order is Range first, then CI.
-  band_levels <- unique(p_ribbon$band)
-  band_levels <- band_levels[!is.na(band_levels)]
-  band_levels <- c("Range", setdiff(band_levels, "Range"))
+  # Linetype + color maps (scenario lines)
+  scen_styles <- make_scenario_style_maps(p_lines)
+  lt_map    <- scen_styles$lt_map
+  color_map <- scen_styles$color_map
   
-  fill_values <- setNames(rep("grey70", length(band_levels)), band_levels)
-  if ("Range" %in% names(fill_values)) fill_values["Range"] <- "grey85"
+  # Fill map for ribbons (Range first, then CI)
+  band_styles <- make_band_fill_map(p_ribbon)
+  band_levels <- band_styles$band_levels
+  fill_values <- band_styles$fill_values
   
   p_ribbon <- p_ribbon %>%
     mutate(band = factor(band, levels = band_levels))
@@ -696,11 +839,31 @@ plot_decile_demand_comparison_pdf <- function(
   
   for (reg in sort(unique(p_all$region_label))) {
     
-    df_ribbon <- p_ribbon %>% filter(region_label == reg)
-    df_lines  <- p_lines  %>% filter(region_label == reg)
+    df_ribbon <- p_ribbon %>% dplyr::filter(region_label == reg)
+    df_lines  <- p_lines  %>% dplyr::filter(region_label == reg)
+    
+    facet_tbl <- dplyr::bind_rows(
+      df_ribbon %>% dplyr::select(facet_id, demand_type),
+      df_lines  %>% dplyr::select(facet_id, demand_type)
+    ) %>% dplyr::distinct()
+    
+    blank_df <- facet_tbl %>%
+      dplyr::mutate(
+        ymax = dplyr::if_else(as.character(demand_type) == "Qtot", ymax_tot, ymax_sn)
+      ) %>%
+      dplyr::select(facet_id, ymax) %>%
+      tidyr::uncount(weights = 2, .id = "k") %>%
+      dplyr::mutate(
+        year = min_year,
+        demand_value = dplyr::if_else(k == 1, 0, ymax)
+      ) %>%
+      dplyr::select(facet_id, year, demand_value)
     
     base <- ggplot() +
-      # Ribbons (behind lines)
+      geom_blank(
+        data = blank_df,
+        aes(x = year, y = demand_value, group = facet_id)
+      ) +
       geom_ribbon(
         data = df_ribbon,
         aes(
@@ -711,7 +874,6 @@ plot_decile_demand_comparison_pdf <- function(
           group = interaction(facet_id, band)
         )
       ) +
-      # Scenario lines
       geom_line(
         data = df_lines,
         aes(
@@ -759,121 +921,110 @@ plot_decile_demand_comparison_pdf <- function(
   dev.off()
 }
 
+# Cross-region CI bar plot for a single year
+# Main: plot and (optionally) save as PDF
+plot_region_ci_bars_one_year <- function(
+    df,
+    target_year,
+    value_col,                        # e.g., "Qtot.region" or "Qtot.diff" etc.
+    ci_level = 0.90,
+    include_range = FALSE,
+    show_median = TRUE,
+    sort_by = c("region_id", "median"), # ordering on x-axis
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID",
+    iteration_col = "iteration",
+    x_label = "Region",
+    y_label = NULL,
+    title = NULL,
+    output_dir = NULL,
+    filename = NULL,
+    width = 11,
+    height = 8.5
+) {
+  
+  sort_by <- match.arg(sort_by)
+  
+  bar_df <- build_year_ci_bar_data(
+    df = df,
+    target_year = target_year,
+    value_col = value_col,
+    ci_level = ci_level,
+    include_range = include_range,
+    consumer_col = consumer_col,
+    consumer_value = consumer_value,
+    region_col = region_col,
+    iteration_col = iteration_col
+  )
+  
+  if (nrow(bar_df) == 0) {
+    stop("plot_region_ci_bars_one_year(): no data after filtering to target_year = ", target_year,
+         ". Check year availability and consumer group filters.")
+  }
+  
+  # ordering of regions on the x-axis
+  if (sort_by == "median") {
+    bar_df <- bar_df %>% dplyr::arrange(.data$med)
+  } else {
+    bar_df <- bar_df %>% dplyr::arrange(.data$GCAM_region_ID)
+  }
+  
+  bar_df <- bar_df %>%
+    dplyr::mutate(
+      region_factor = factor(GCAM_region_ID, levels = unique(GCAM_region_ID))
+    )
+  
+  if (is.null(y_label)) y_label <- value_col
+  if (is.null(title)) {
+    title <- sprintf("%s across regions in %d (%s)", value_col, target_year, bar_df$ci_label[[1]])
+  }
+  
+  p <- ggplot2::ggplot(bar_df, ggplot2::aes(x = region_factor)) +
+    
+    # optional full range behind the CI (lighter, thicker)
+    { if (include_range) ggplot2::geom_linerange(
+      ggplot2::aes(ymin = ymin, ymax = ymax),
+      linewidth = 1.2,
+      alpha = 0.35
+    ) } +
+    
+    # central CI
+    ggplot2::geom_linerange(
+      ggplot2::aes(ymin = lo, ymax = hi),
+      linewidth = 0.9
+    ) +
+    
+    # optional median point
+    { if (show_median) ggplot2::geom_point(
+      ggplot2::aes(y = med),
+      size = 1.8
+    ) } +
+    
+    ggplot2::labs(
+      title = title,
+      x = x_label,
+      y = y_label
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1),
+      panel.grid.major.x = ggplot2::element_blank()
+    )
+  
+  # save if requested
+  if (!is.null(output_dir) && !is.null(filename)) {
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    ggplot2::ggsave(
+      filename = file.path(output_dir, filename),
+      plot = p,
+      width = width,
+      height = height,
+      units = "in",
+      device = cairo_pdf
+    )
+  }
+  
+  return(p)
+}
 
-
-
-
-# # Decile-based comparison plot
-# plot_decile_demand_comparison <- function(freq_table, global_iter_row,
-#                                           demand_reg, region, consumer_group,
-#                                           sample_n = 100, return_data = FALSE) {
-#   demand_reg_grp <- demand_reg %>%
-#     filter(`gcam-consumer` == consumer_group)
-# 
-#   sampled_iterations <- demand_reg_grp %>%
-#     distinct(iteration) %>%
-#     pull(iteration) %>%
-#     unique() %>%
-#     sample(size = min(sample_n, length(.)))
-# 
-#   sampled_data <- demand_reg_grp %>%
-#     filter(iteration %in% sampled_iterations) %>%
-#     select(iteration, year, `gcam-consumer`, Qs, Qn, Qtot) %>%
-#     pivot_longer(cols = c(Qs, Qn, Qtot),
-#                  names_to = "demand_type", values_to = "demand_value") %>%
-#     mutate(GCAM_region_ID = as.character(region))
-# 
-#   regional_compare <- demand_reg_grp %>%
-#     filter(iteration %in% c(freq_table$HD_Qtot, freq_table$LD_Qtot)) %>%
-#     mutate(
-#       measure = if_else(iteration == freq_table$HD_Qtot, "HD_Qtot", "LD_Qtot"),
-#       scenario_source = "regional"
-#     )
-# 
-#   global_compare <- demand_reg_grp %>%
-#     filter(iteration %in% c(global_iter_row$HD_Qtot, global_iter_row$LD_Qtot)) %>%
-#     mutate(
-#       measure = if_else(iteration == global_iter_row$HD_Qtot, "HD_Qtot", "LD_Qtot"),
-#       scenario_source = "global"
-#     )
-# 
-#   demand_compare <- bind_rows(regional_compare, global_compare) %>%
-#     select(iteration, year, `gcam-consumer`, Qs, Qn, Qtot, measure, scenario_source) %>%
-#     pivot_longer(cols = c(Qs, Qn, Qtot),
-#                  names_to = "demand_type", values_to = "demand_value") %>%
-#     mutate(GCAM_region_ID = as.character(region))
-# 
-#   if (return_data) {
-#     return(bind_rows(
-#       sampled_data %>% mutate(scenario_source = "sample", measure = NA),
-#       demand_compare
-#     ))
-#   }
-# 
-#   ggplot() +
-#     geom_line(data = sampled_data, aes(x = year, y = demand_value, group = interaction(iteration, demand_type)),
-#               color = "gray85", size = 0.4, alpha = 0.5) +
-#     geom_line(data = demand_compare, aes(x = year, y = demand_value, color = measure, linetype = scenario_source),
-#               size = 1.2) +
-#     facet_wrap(~ demand_type, scales = "free_y") +
-#     scale_color_manual(values = c("HD_Qtot" = "#1b9e77", "LD_Qtot" = "#d95f02")) +
-#     labs(x = "Year", y = "Demand", color = "Model", linetype = "Scenario") +
-#     theme_minimal()
-# }
-# 
-# # Decile-based PDF
-# plot_decile_demand_comparison_pdf <- function(p_all, region_mapping, output_dir,
-#                                               cols_per_page = 3, rows_per_page = 5,
-#                                               filename = "demand_by_decile.pdf") {
-#   region_mapping <- region_mapping %>%
-#     mutate(GCAM_region_ID = as.character(GCAM_region_ID))
-# 
-#   p_all <- p_all %>%
-#     mutate(GCAM_region_ID = as.character(GCAM_region_ID)) %>%
-#     left_join(region_mapping, by = "GCAM_region_ID") %>%
-#     mutate(region_label = if_else(is.na(region), GCAM_region_ID, region)) %>%
-#     select(-region)
-# 
-#   p_all <- p_all %>%
-#     mutate(
-#       region_label = factor(region_label),
-#       consumer_group = factor(consumer_group,
-#                               levels = c("FoodDemand_Group1", "FoodDemand_Group2", "FoodDemand_Group3",
-#                                          "FoodDemand_Group6", "FoodDemand_Group10")),
-#       demand_type = factor(demand_type, levels = c("Qs", "Qn", "Qtot")),
-#       scenario_source = factor(scenario_source, levels = c("sample", "regional", "global"))
-#     )
-# 
-#   region_levels <- sort(unique(p_all$region_label))
-#   p_all <- p_all %>% mutate(region_label = factor(region_label, levels = region_levels))
-# 
-#   pdf(file.path(output_dir, filename), width = 8.5, height = 11)
-# 
-#   for (region in levels(p_all$region_label)) {
-#     plot_data <- p_all %>% filter(region_label == region)
-# 
-#     p <- ggplot(plot_data, aes(x = year, y = demand_value)) +
-#       geom_line(
-#         data = filter(plot_data, scenario_source == "sample"),
-#         aes(group = interaction(iteration, demand_type)),
-#         color = "gray80", size = 0.4
-#       ) +
-#       geom_line(
-#         data = filter(plot_data, scenario_source %in% c("regional", "global")),
-#         aes(color = measure, linetype = scenario_source),
-#         size = 1.2
-#       ) +
-#       facet_wrap(~ consumer_group + demand_type,
-#                  ncol = cols_per_page, nrow = rows_per_page,
-#                  scales = "free_y") +
-#       scale_color_manual(values = c("HD_Qtot" = "#1b9e77", "LD_Qtot" = "#d95f02")) +
-#       scale_linetype_manual(values = c("regional" = "dashed", "global" = "solid")) +
-#       labs(x = "Year", y = "Demand", color = "Model", linetype = "Scenario",
-#            title = paste("Demand Projections by Decile:", region)) +
-#       theme_minimal(base_size = 13)
-# 
-#     print(p)
-#   }
-# 
-#   dev.off()
-# }
