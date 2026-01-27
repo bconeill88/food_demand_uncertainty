@@ -1,5 +1,9 @@
 # Functions supporting the 08_plot_demand_with_intervals.R main script
 
+# =============================================================================
+# Helper functions for the plotting functions located further below
+# =============================================================================
+
 # Helper: round up ymax to a nice increment; for use in pdf creation with plots
 # sharing same ymax.
 nice_ymax <- function(x, step = 0.25) {
@@ -7,8 +11,7 @@ nice_ymax <- function(x, step = 0.25) {
   ceiling(x / step) * step
 }
 
-# Helper: build ensemble uncertainty ribbons (full range + central CI)
-# Returns a standardized ribbon table compatible with downstream plotting
+# Helper: build ensemble uncertainty ribbons (range + central CI, or CI-only)
 build_ensemble_ribbon_data <- function(
     df,
     reg_num,
@@ -18,33 +21,32 @@ build_ensemble_ribbon_data <- function(
     year_min = 2015,
     consumer_col = "gcam-consumer",
     consumer_value = "FoodDemand_Group1",
-    region_col = "GCAM_region_ID"
+    region_col = "GCAM_region_ID",
+    include_range = TRUE
 ) {
   
-  # CI level must be strictly positive; 1.0 implies full range
   stopifnot(ci_level > 0, ci_level <= 1)
   
-  # ---- Filter to plotting domain (years, region, consumer group) ----
+  # Filter to plotting domain (years, consumer group, region)
   out_df <- df %>%
-    dplyr::filter(.data$year >= year_min)
+    filter(year >= year_min)
   
   if (consumer_col %in% names(out_df)) {
-    out_df <- out_df %>% dplyr::filter(.data[[consumer_col]] == consumer_value)
+    out_df <- out_df %>% filter(.data[[consumer_col]] == consumer_value)
   }
-  
   if (region_col %in% names(out_df)) {
-    out_df <- out_df %>% dplyr::filter(.data[[region_col]] == reg_num)
+    out_df <- out_df %>% filter(.data[[region_col]] == reg_num)
   }
   
-  # ---- Prepare CI parameters ----
+  # CI parameters
   alpha    <- (1 - ci_level) / 2
   ci_label <- paste0(round(ci_level * 100), "% CI")
   
-  # ---- Long-form ensemble draws (per iteration) ----
+  # Long-form ensemble draws (per iteration)
   ensemble_long <- out_df %>%
-    select(iteration, year, dplyr::all_of(demand_cols)) %>%
+    select(iteration, year, all_of(demand_cols)) %>%
     pivot_longer(
-      cols      = dplyr::all_of(demand_cols),
+      cols      = all_of(demand_cols),
       names_to  = "demand_type",
       values_to = "demand_value"
     ) %>%
@@ -53,40 +55,41 @@ build_ensemble_ribbon_data <- function(
       demand_type    = factor(demand_type, levels = demand_levels)
     )
   
-  # ---- Compute range and central CI by year and demand type ----
+  # Range + CI bounds by year and demand type
   ensemble_band <- ensemble_long %>%
     group_by(GCAM_region_ID, year, demand_type) %>%
     summarise(
       ymin = min(demand_value, na.rm = TRUE),
       ymax = max(demand_value, na.rm = TRUE),
-      lo   = stats::quantile(demand_value, probs = alpha,     na.rm = TRUE, names = FALSE),
-      hi   = stats::quantile(demand_value, probs = 1 - alpha, na.rm = TRUE, names = FALSE),
+      lo   = quantile(demand_value, probs = alpha,     na.rm = TRUE, names = FALSE),
+      hi   = quantile(demand_value, probs = 1 - alpha, na.rm = TRUE, names = FALSE),
       .groups = "drop"
     )
   
-  # ---- Assemble ribbon rows (Range + CI) ----
-  ribbon_data <- dplyr::bind_rows(
+  # Assemble ribbon rows
+  ribbon_rows <- bind_rows(
+    if (include_range) {
+      ensemble_band %>%
+        transmute(
+          GCAM_region_ID, year, demand_type,
+          band        = "Range",
+          ribbon_ymin = ymin,
+          ribbon_ymax = ymax
+        )
+    } else {
+      NULL
+    },
     ensemble_band %>%
       transmute(
-        GCAM_region_ID,
-        year,
-        demand_type,
-        band        = "Range",
-        ribbon_ymin = ymin,
-        ribbon_ymax = ymax
-      ),
-    ensemble_band %>%
-      dplyr::transmute(
-        GCAM_region_ID,
-        year,
-        demand_type,
+        GCAM_region_ID, year, demand_type,
         band        = ci_label,
         ribbon_ymin = lo,
         ribbon_ymax = hi
       )
-  ) %>%
-    # Columns included for compatibility with combined plot data
-    dplyr::mutate(
+  )
+  
+  ribbon_data <- ribbon_rows %>%
+    mutate(
       demand_value  = NA_real_,
       scenario_name = NA_character_,
       model         = "ensemble_band",
@@ -97,6 +100,91 @@ build_ensemble_ribbon_data <- function(
   list(
     ribbon_data = ribbon_data,
     ci_label    = ci_label
+  )
+}
+
+# Helper: CI bound lines (lower + upper) as scenario lines, with one legend entry
+build_ci_bound_lines <- function(
+    df,
+    reg_num,
+    demand_cols,
+    demand_levels,
+    label,
+    ci_level = 0.90,
+    year_min = 2015,
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID",
+    model = "set2",
+    line_role = "dashed"
+) {
+  
+  stopifnot(ci_level > 0, ci_level <= 1)
+  
+  # Filter to plotting domain (years, consumer group, region)
+  out_df <- df %>%
+    filter(year >= year_min)
+  
+  if (consumer_col %in% names(out_df)) {
+    out_df <- out_df %>% filter(.data[[consumer_col]] == consumer_value)
+  }
+  if (region_col %in% names(out_df)) {
+    out_df <- out_df %>% filter(.data[[region_col]] == reg_num)
+  }
+  
+  # CI parameters
+  alpha <- (1 - ci_level) / 2
+  
+  # Long-form draws
+  long <- out_df %>%
+    select(iteration, year, all_of(demand_cols)) %>%
+    pivot_longer(
+      cols = all_of(demand_cols),
+      names_to = "demand_type",
+      values_to = "demand_value"
+    ) %>%
+    mutate(
+      GCAM_region_ID = as.integer(reg_num),
+      demand_type    = factor(demand_type, levels = demand_levels)
+    )
+  
+  # Quantiles per year/type
+  q <- long %>%
+    group_by(GCAM_region_ID, year, demand_type) %>%
+    summarise(
+      lo = quantile(demand_value, probs = alpha,     na.rm = TRUE, names = FALSE),
+      hi = quantile(demand_value, probs = 1 - alpha, na.rm = TRUE, names = FALSE),
+      .groups = "drop"
+    )
+  
+  # Two lines, same scenario_name; bound_id keeps them separate for grouping
+  bind_rows(
+    q %>%
+      transmute(
+        GCAM_region_ID, year, demand_type,
+        demand_value  = lo,
+        scenario_name = label,
+        model         = model,
+        line_role     = line_role,
+        bound_id      = "lo",
+        iteration     = NA_integer_,
+        band          = NA_character_,
+        ribbon_ymin   = NA_real_,
+        ribbon_ymax   = NA_real_
+      ),
+    q %>%
+      transmute(
+        GCAM_region_ID, year, demand_type,
+        demand_value  = hi,
+        scenario_name = label,
+        model         = model,
+        line_role     = line_role,
+        bound_id      = "hi",
+        iteration     = NA_integer_,
+        band          = NA_character_,
+        ribbon_ymin   = NA_real_,
+        ribbon_ymax   = NA_real_
+      )
   )
 }
 
@@ -261,6 +349,35 @@ build_year_ci_bar_data <- function(
   sum_ci
 }
 
+# Helper: convert plot data to be relative to ML (ML becomes 0)
+make_relative_to_ml <- function(p_all, ml_scenario_name) {
+  
+  # Extract ML baseline by year and demand_type
+  ml_base <- p_all %>%
+    filter(!is.na(scenario_name),
+           scenario_name == ml_scenario_name) %>%
+    select(GCAM_region_ID, year, demand_type, ml_value = demand_value) %>%
+    distinct()
+  
+  if (nrow(ml_base) == 0) {
+    stop("make_relative_to_ml(): ML scenario not found: ", ml_scenario_name)
+  }
+  
+  # Join baseline and subtract for lines and ribbons
+  p_all %>%
+    left_join(ml_base, by = c("GCAM_region_ID", "year", "demand_type")) %>%
+    mutate(
+      demand_value = if_else(!is.na(demand_value), demand_value - ml_value, demand_value),
+      ribbon_ymin  = if_else(!is.na(ribbon_ymin),  ribbon_ymin  - ml_value, ribbon_ymin),
+      ribbon_ymax  = if_else(!is.na(ribbon_ymax),  ribbon_ymax  - ml_value, ribbon_ymax)
+    ) %>%
+    select(-ml_value)
+}
+
+# =============================================================================
+# Regional demand comparison plots (range + CI ribbons + scenario overlays)
+# =============================================================================
+
 # Regional demand: single-region plot that shows regional demand over time with
 # separate panels for Qs, Qn, and Qtotal, for a sub-sample of the ambrosia
 # ensemble. Optionally, it also includes three single scenarios: a reference
@@ -404,8 +521,12 @@ plot_regional_demand_comparison_pdf <- function(
     cols_per_page = 3,
     rows_per_page = 4,
     filename = "demand_all_regions_ens_bc.pdf",
-    ensemble_name = "Emulator"   # retained for compatibility; not used for ribbons
+    color_override = NULL,
+    linetype_override = NULL,
+    ylimit_mode = c("by_type_global", "by_region")
 ) {
+  
+  ylimit_mode <- match.arg(ylimit_mode)
   
   # Join region names and set factor order for demand_type
   p_all <- p_all %>%
@@ -443,61 +564,98 @@ plot_regional_demand_comparison_pdf <- function(
     dplyr::distinct(facet_id, facet_strip) %>%
     tibble::deframe()
   
-  # Split into ribbons vs scenario lines
+  # Split into ribbons vs lines
   p_ribbon <- p_all %>% filter(!is.na(band))
   p_lines  <- p_all %>% filter(!is.na(scenario_name))
+  
+  if (!("bound_id" %in% names(p_lines))) {
+    p_lines <- p_lines %>% mutate(bound_id = NA_character_)
+  }
   
   scen_styles <- make_scenario_style_maps(p_lines)
   lt_map    <- scen_styles$lt_map
   color_map <- scen_styles$color_map
   
+  # Override colors for specific scenario names
+  if (!is.null(color_override)) {
+    nm <- intersect(names(color_override), names(color_map))
+    if (length(nm) > 0) color_map[nm] <- color_override[nm]
+  }
+  
+  # Override linetypes for specific scenario names
+  if (!is.null(linetype_override)) {
+    nm <- intersect(names(linetype_override), names(lt_map))
+    if (length(nm) > 0) lt_map[nm] <- linetype_override[nm]
+  }
+  
   band_styles <- make_band_fill_map(p_ribbon)
   band_levels <- band_styles$band_levels
   fill_values <- band_styles$fill_values
   
-  p_ribbon <- p_ribbon %>%
-    mutate(band = factor(band, levels = band_levels))
+  p_ribbon <- p_ribbon %>% mutate(band = factor(band, levels = band_levels))
   
-  # ---- Harmonized y-axis limits (global across all regions) ----
-  ymax_sn <- p_all %>%
-    filter(demand_type %in% c("Qs.region", "Qn.region")) %>%
-    summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
-    pull(mx) %>%
-    nice_ymax(step = 0.25)
-  
-  ymax_tot <- p_all %>%
-    filter(demand_type %in% c("Qtot.region")) %>%
-    summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
-    pull(mx) %>%
-    nice_ymax(step = 0.25)
-  
-  # ---- Force per-facet y ranges via geom_blank() (works with ggforce pagination) ----
+  # Force per-facet y ranges using invisible points
   min_year <- suppressWarnings(min(p_all$year, na.rm = TRUE))
   if (!is.finite(min_year)) min_year <- 2015
   
-  facet_tbl <- p_all %>%
-    distinct(facet_id, demand_type)
+  facet_tbl <- p_all %>% distinct(facet_id, demand_type, region_label)
   
-  blank_df <- facet_tbl %>%
-    mutate(
-      ymax = if_else(as.character(demand_type) == "Qtot.region", ymax_tot, ymax_sn)
-    ) %>%
-    select(facet_id, ymax) %>%
-    tidyr::uncount(weights = 2, .id = "k") %>%
-    mutate(
-      year = min_year,
-      demand_value = if_else(k == 1, 0, ymax)
-    ) %>%
-    select(facet_id, year, demand_value)
+  if (ylimit_mode == "by_type_global") {
+    
+    # Global limits by demand type group (your existing intent)
+    ymax_sn <- p_all %>%
+      filter(demand_type %in% c("Qs.region", "Qn.region")) %>%
+      summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+      pull(mx) %>%
+      nice_ymax(step = 0.25)
+    
+    ymax_tot <- p_all %>%
+      filter(demand_type %in% c("Qtot.region")) %>%
+      summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+      pull(mx) %>%
+      nice_ymax(step = 0.25)
+    
+    blank_df <- facet_tbl %>%
+      mutate(ymax = if_else(as.character(demand_type) == "Qtot.region", ymax_tot, ymax_sn)) %>%
+      select(facet_id, ymax) %>%
+      tidyr::uncount(weights = 2, .id = "k") %>%
+      mutate(
+        year = min_year,
+        demand_value = if_else(k == 1, 0, ymax)
+      ) %>%
+      select(facet_id, year, demand_value)
+    
+  } else if (ylimit_mode == "by_region") {
+    
+    # Compute per-region min/max across ALL three demand types
+    reg_limits <- p_all %>%
+      group_by(region_label) %>%
+      summarise(
+        ymin = min(c(ribbon_ymin, demand_value), na.rm = TRUE),
+        ymax = max(c(ribbon_ymax, demand_value), na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    # Apply the same [ymin, ymax] to every facet in that region
+    blank_df <- facet_tbl %>%
+      left_join(reg_limits, by = "region_label") %>%
+      select(facet_id, ymin, ymax) %>%
+      tidyr::uncount(weights = 2, .id = "k") %>%
+      mutate(
+        year = min_year,
+        demand_value = if_else(k == 1, ymin, ymax)
+      ) %>%
+      select(facet_id, year, demand_value)
+  }
   
-  # Base plot; paginate with ggforce::facet_wrap_paginate()
+  # Base plot: y-range forcing + ribbon + lines
   base <- ggplot() +
-    # Invisible points to force y-axis to [0, ymax_*] per facet
+    # Force per-facet y-limits via invisible points
     geom_blank(
       data = blank_df,
       aes(x = year, y = demand_value, group = facet_id)
     ) +
-    # Ribbons (behind lines)
+    # CI ribbon (full ensemble)
     geom_ribbon(
       data = p_ribbon,
       aes(
@@ -508,7 +666,7 @@ plot_regional_demand_comparison_pdf <- function(
         group = interaction(facet_id, band)
       )
     ) +
-    # Scenario lines
+    # Scenario + CI-boundary lines
     geom_line(
       data = p_lines,
       aes(
@@ -516,29 +674,30 @@ plot_regional_demand_comparison_pdf <- function(
         y = demand_value,
         color = scenario_name,
         linetype = scenario_name,
-        group = interaction(facet_id, scenario_name)
+        group = interaction(facet_id, scenario_name, bound_id)
       ),
       linewidth = 0.8
     ) +
+    # Scales
     scale_linetype_manual(values = lt_map) +
     scale_color_manual(values = color_map) +
-    scale_fill_manual(name = "Ensemble", values = fill_values) +
+    scale_fill_manual(name = "Ensemble", values = fill_values, drop = FALSE) +
+    # Legends
     guides(
       fill     = guide_legend(order = 1),
       color    = guide_legend(order = 2),
       linetype = guide_legend(order = 2)
     ) +
+    # Labels + theme
     labs(
       x = "Year",
-      y = "Demand (kcal/day)",
+      y = "Demand difference vs ML (kcal/day)",
       color = "Scenario",
       linetype = "Scenario"
     ) +
     theme_minimal(base_size = 13) +
-    theme(
-      strip.text = element_text(size = 10)
-    )
-  
+    theme(strip.text = element_text(size = 10))
+
   # Determine number of pages
   tmp <- base + ggforce::facet_wrap_paginate(
     ~ facet_id,
@@ -921,6 +1080,12 @@ plot_decile_demand_comparison_pdf <- function(
   dev.off()
 }
 
+# =============================================================================
+# Regional demand uncertainty bar plots 
+# =============================================================================
+
+# Demand uncertainty bar plots -------------------------------------------------
+
 # Cross-region CI bar plot for a single year
 # Main: plot and (optionally) save as PDF
 plot_region_ci_bars_one_year <- function(
@@ -1028,3 +1193,151 @@ plot_region_ci_bars_one_year <- function(
   return(p)
 }
 
+# =============================================================================
+# Uncertainty decomposition plots (CI ribbon + upper/lower bound overlays)
+# =============================================================================
+
+# Regional uncertainty decomposition: CI ribbon for full ensemble + ML + CI bounds 
+# for 3 sub-ensembles
+plot_regional_uncertainty_decomposition <- function(
+    demand_full,
+    reg_num,
+    
+    scen_ml,
+    scen_ml_name = "Ambrosia ML",
+    
+    ens_price,
+    ens_income,
+    ens_scale,
+    
+    ci_level = 0.90,
+    year_min = 2015,
+    return_data = FALSE
+) {
+  
+  stopifnot(ci_level > 0, ci_level <= 1)
+  
+  # Guardrails (regional format expects *.region columns)
+  required_cols <- c("GCAM_region_ID", "year", "iteration", "gcam-consumer",
+                     "Qs.region", "Qn.region", "Qtot.region")
+  missing_cols <- setdiff(required_cols, names(demand_full))
+  if (length(missing_cols) > 0) {
+    stop("plot_regional_uncertainty_decomposition(): missing columns in demand_full: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  demand_cols   <- c("Qs.region", "Qn.region", "Qtot.region")
+  demand_levels <- c("Qs.region", "Qn.region", "Qtot.region")
+  
+  # Full-ensemble ribbon (CI only)
+  ribbon_res <- build_ensemble_ribbon_data(
+    df             = demand_full,
+    reg_num        = reg_num,
+    demand_cols    = demand_cols,
+    demand_levels  = demand_levels,
+    ci_level       = ci_level,
+    year_min       = year_min,
+    consumer_col   = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col     = "GCAM_region_ID",
+    include_range  = FALSE
+  )
+  ribbon_data <- ribbon_res$ribbon_data
+  
+  # ML scenario (standard helper)
+  ml_data <- reshape_scenario_long(
+    df            = scen_ml,
+    scen_name     = scen_ml_name,
+    model_set     = "set2",
+    line_role     = "solid",
+    reg_num       = reg_num,
+    year_min      = year_min,
+    demand_cols   = demand_cols,
+    demand_levels = demand_levels,
+    consumer_group = "FoodDemand_Group1"
+  )
+  
+  # CI bound lines for decomposition ensembles (one legend entry per component)
+  price_lines <- build_ci_bound_lines(
+    df            = ens_price,
+    reg_num       = reg_num,
+    demand_cols   = demand_cols,
+    demand_levels = demand_levels,
+    label         = "Price-only CI",
+    ci_level      = ci_level,
+    year_min      = year_min,
+    model         = "set2",
+    line_role     = "dashed"
+  )
+  
+  income_lines <- build_ci_bound_lines(
+    df            = ens_income,
+    reg_num       = reg_num,
+    demand_cols   = demand_cols,
+    demand_levels = demand_levels,
+    label         = "Income-only CI",
+    ci_level      = ci_level,
+    year_min      = year_min,
+    model         = "set2",
+    line_role     = "dashed"
+  )
+  
+  scale_lines <- build_ci_bound_lines(
+    df            = ens_scale,
+    reg_num       = reg_num,
+    demand_cols   = demand_cols,
+    demand_levels = demand_levels,
+    label         = "Scale-only CI",
+    ci_level      = ci_level,
+    year_min      = year_min,
+    model         = "set2",
+    line_role     = "dashed"
+  )
+  
+  # Standardized output table (compatible with your pdf pipeline)
+  out <- bind_rows(
+    ribbon_data,
+    ml_data,
+    price_lines,
+    income_lines,
+    scale_lines
+  )
+  
+  # Convert to differences relative to ML (ML becomes zero)
+  out <- make_relative_to_ml(out, ml_scenario_name = scen_ml_name)
+  
+  if (return_data) return(out)
+  
+  # Optional: single-region ggplot for quick checking
+  p_ribbon <- out %>% filter(!is.na(band))
+  p_lines  <- out %>% filter(!is.na(scenario_name))
+  
+  scen_styles <- make_scenario_style_maps(p_lines)
+  band_styles <- make_band_fill_map(p_ribbon)
+  
+  p_ribbon <- p_ribbon %>%
+    mutate(band = factor(band, levels = band_styles$band_levels))
+  
+  ggplot() +
+    geom_ribbon(
+      data = p_ribbon,
+      aes(x = year, ymin = ribbon_ymin, ymax = ribbon_ymax, fill = band,
+          group = interaction(GCAM_region_ID, demand_type, band))
+    ) +
+    geom_line(
+      data = p_lines,
+      aes(
+        x = year,
+        y = demand_value,
+        color = scenario_name,
+        linetype = scenario_name,
+        group = interaction(GCAM_region_ID, demand_type, scenario_name, bound_id)
+      ),
+      linewidth = 0.8
+    ) +
+    scale_linetype_manual(values = scen_styles$lt_map) +
+    scale_color_manual(values = scen_styles$color_map) +
+    scale_fill_manual(name = "Ensemble", values = band_styles$fill_values) +
+    facet_wrap(~ demand_type, scales = "free_y") +
+    theme_minimal(base_size = 13)
+}

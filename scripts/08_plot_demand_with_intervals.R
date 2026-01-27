@@ -16,12 +16,13 @@ ensure_package(ggh4x)
 # in a given target year
 REGIONAL <- FALSE
 DECILE <- FALSE
-BAR <- TRUE
+BAR <- FALSE
 target_year = 2050
+DECOMP <- TRUE
 
 # Indicate whether to create absolute demand or demand difference plots
-ABS <- FALSE
-DIFF <- TRUE
+ABS <- TRUE
+DIFF <- FALSE
 
 # Define directories and file names
 
@@ -30,7 +31,12 @@ reg_results_path_abs <- file.path("data", "processed", procdata_dir,
                                procdata_subdir_RefMLgcam)
 reg_results_path_diff <- file.path("data", "processed", procdata_dir,
                                 procdata_subdir_RefMLgcam, demand_diffs_subdir)
-
+reg_results_path_price <- file.path("data", "processed", procdata_dir,
+                                  procdata_subdir_RefMLgcam_price)
+reg_results_path_income <- file.path("data", "processed", procdata_dir,
+                                  procdata_subdir_RefMLgcam_income)
+reg_results_path_scale <- file.path("data", "processed", procdata_dir,
+                                  procdata_subdir_RefMLgcam_scale)
 # Directory for report result
 output_dir <- file.path("output", "reports", procdata_dir, procdata_subdir_RefMLgcam)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -42,13 +48,14 @@ report_name_decile_abs <- "demand_decile_all_regions_ens_bc_ML.pdf"
 report_name_decile_diff <- "demand_diffs_decile_all_regions_ens_bc.pdf"
 report_name_regional_abs_bar <- "demand_regional_all_regions_bar_ens_bc_ML.pdf"
 report_name_decile_abs_bar <- "demand_decile_all_regions_bar_ens_bc_ML.pdf"
+report_name_regional_decomp_abs <- "demand_decomp_all_regions_ens_bc_ML.pdf"
 
 # Scenario case to use in file names
 scen_case_abs <- "_ens_bc"
 scen_case_diff <- "_diffs_ens_bc"
 
 # Regions and deciles to plot
-region_list <- c(1:32)
+region_list <- c(1:29, 31, 32) # skip Taiwan; note new GCAM ML results are missing region 14
 target_deciles <- c("FoodDemand_Group1", "FoodDemand_Group2", "FoodDemand_Group3",
                     "FoodDemand_Group6", "FoodDemand_Group10")
 
@@ -62,12 +69,12 @@ if(ABS) {
   gcamoutput_Ref_ML <-
     readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
                       "gcamoutput_Ref_ML.RDS"))
-  gcamoutput_Ref_HD <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_HD.RDS"))
-  gcamoutput_Ref_LD <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_LD.RDS"))
+  # gcamoutput_Ref_HD <-
+  #   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
+  #                     "gcamoutput_Ref_HD.RDS"))
+  # gcamoutput_Ref_LD <-
+  #   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
+  #                     "gcamoutput_Ref_LD.RDS"))
   
   # ambrosia results, from files produced by the 07 parameter for intervals script
   amboutput_Ref_ML_MLparams <-
@@ -108,6 +115,7 @@ p_all_regional_diff <- data.frame()
 p_all_decile_diff <- data.frame()
 reg_ens_bc_targetyr <- data.frame()
 reg_diffs_ens_bc_targetyr <- data.frame()
+p_all_regional_decomp_abs <- data.frame()
 
 # Create plots by region
 for(region_id in region_list) {
@@ -193,6 +201,37 @@ for(region_id in region_list) {
                   reg_ens_bc %>% 
                     filter(year == target_year,
                            `gcam-consumer` == "FoodDemand_Group1"))
+    }
+    
+    if(DECOMP) {
+      
+      # Load regional decomposition ensemble data
+      reg_ens_price <- readRDS(
+        file.path(reg_results_path_price,  
+                  paste0("demand_R", region_id, "_MLprice", scen_case_abs, ".RDS")))
+      reg_ens_income <- readRDS(
+        file.path(reg_results_path_income,  
+                  paste0("demand_R", region_id, "_MLincome", scen_case_abs, ".RDS")))
+      reg_ens_scale <- readRDS(
+        file.path(reg_results_path_scale,  
+                  paste0("demand_R", region_id, "_MLscale", scen_case_abs, ".RDS")))
+      
+      # Inside the region loop, after loading demand_full and having the 3 sub-ensembles available:
+      p_decomp <- plot_regional_uncertainty_decomposition(
+        demand_full = reg_ens_bc,
+        reg_num     = region_id,
+        scen_ml     = amboutput_Ref_ML_MLparams,
+        scen_ml_name = "Ambrosia ML",
+        ens_price   = reg_ens_price,
+        ens_income  = reg_ens_income,
+        ens_scale   = reg_ens_scale,
+        ci_level    = 0.90,
+        year_min    = 2015,
+        return_data = TRUE
+      )
+      
+      p_all_regional_decomp_abs <- bind_rows(p_all_regional_decomp_abs, p_decomp)
+      
     }
   }
   
@@ -322,6 +361,33 @@ if(ABS) {
       output_dir = output_dir,
       filename = report_name_regional_abs_bar,
       y_label = "Total demand (kcal/person/day)"
+    )
+  }
+  
+  if(DECOMP) {
+    
+    teal <- "#2A9D8F"
+    
+    color_override <- c(
+      "Price-only CI"  = teal,
+      "Income-only CI" = teal,
+      "Scale-only CI"  = teal
+    )
+    
+    linetype_override <- c(
+      "Price-only CI"  = "dashed",
+      "Income-only CI" = "dotted",
+      "Scale-only CI"  = "dotdash"
+    )
+    
+    plot_regional_demand_comparison_pdf(
+      p_all = p_all_regional_decomp_abs,
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = report_name_regional_decomp_abs,
+      color_override = color_override,
+      linetype_override = linetype_override,
+      ylimit_mode = "by_region"
     )
   }
 }
