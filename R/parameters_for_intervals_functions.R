@@ -96,6 +96,102 @@ make_HL_params_freq <- function(
   }
 }
 
+make_BOTH_params_freq <- function(
+    year_vals,
+    data_dir,          # needed to load parameter files
+    abs_dir,
+    abs_scen_case,
+    diff_dir,
+    diff_scen_case,
+    out_dir,
+    regions,
+    abs_bounds,
+    diff_bounds,
+    save_outputs = TRUE
+) {
+  
+  both_case <- "_BOTH"
+  
+  message("Calculating BOTH (ABS ∩ DIFF) parameter sets")
+  
+  if (save_outputs) {
+    dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  }
+  
+  # load parameter files
+  param_file_global <- file.path("data", "processed", data_dir, "inputs", 
+                                 "param_data_global_clean_sub.RDS")
+  param_file_FE     <- file.path("data", "processed", data_dir, "inputs", 
+                                 "param_data_FE_clean_sub.RDS")
+  param_data_global_clean_sub <- readRDS(param_file_global)
+  param_data_FE_clean_sub     <- readRDS(param_file_FE)
+  
+  message("  Extracting joint (ABS ∩ DIFF) intervals for all regions and years")
+  
+  demand_intervals_both <- get_demand_intervals_both(
+    year_vals      = year_vals,
+    abs_dir        = abs_dir,
+    abs_scen_case  = abs_scen_case,
+    diff_dir       = diff_dir,
+    diff_scen_case = diff_scen_case,
+    regions        = regions,
+    abs_bounds     = abs_bounds,
+    diff_bounds    = diff_bounds,
+    fd_types       = c("Qtot")
+  )
+  
+  if (save_outputs) {
+    saveRDS(demand_intervals_both,
+            file.path(out_dir, paste0("demand_intervals", both_case, ".RDS")))
+  }
+  
+  message("  Computing maximum-frequency iterations for BOTH cases")
+  
+  max_iter_frequencies <- compute_max_iteration_frequencies_both(demand_intervals_both)
+  
+  if (save_outputs) {
+    saveRDS(max_iter_frequencies,
+            file.path(out_dir, paste0("max_iter_frequencies", both_case, ".RDS")))
+  }
+  
+  message("  Building full iteration frequency table")
+  
+  full_freq_table <- build_full_frequency_table_both(
+    demand_intervals_both,
+    max_iter_frequencies,
+    regions
+  )
+  
+  if (save_outputs) {
+    saveRDS(full_freq_table,
+            file.path(out_dir, paste0("full_freq_table", both_case, ".RDS")))
+  }
+  
+  message("  Building parameter tables")
+  
+  param_tables <- build_parameter_tables(
+    max_iter_frequencies,
+    param_data_global_clean_sub,
+    param_data_FE_clean_sub
+  )
+  
+  if (save_outputs) {
+    saveRDS(param_tables$param_table_global,
+            file.path(out_dir, paste0("param_table_global", both_case, ".RDS")))
+    saveRDS(param_tables$param_table_FE,
+            file.path(out_dir, paste0("param_table_FE", both_case, ".RDS")))
+  }
+  
+  invisible(list(
+    demand_intervals_both  = demand_intervals_both,
+    max_iter_frequencies   = max_iter_frequencies,
+    full_freq_table        = full_freq_table,
+    param_table_global     = param_tables$param_table_global,
+    param_table_FE         = param_tables$param_table_FE
+  ))
+}
+
+
 # function for getting iterations that are members of certain "cases" defined as the value of
 # a type of food demand falling in given quantile; food types include Qn, Qs, Qtot, and Qs and
 # Qn simultaneously; quantiles include those defined for high demand and low demand as passed
@@ -163,6 +259,111 @@ get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds,
   bind_rows(demand_intervals_list)
 }
 
+# Identify iterations that satisfy BOTH an ABS interval (HD/LD)
+# and a DIFF interval (HPR/LPR) for the same region/year.
+get_demand_intervals_both <- function(
+    year_vals,
+    abs_dir,
+    abs_scen_case,
+    diff_dir,
+    diff_scen_case,
+    regions,
+    abs_bounds,
+    diff_bounds,
+    abs_hi_name = "HD",
+    abs_lo_name = "LD",
+    diff_hi_name = "HPR",
+    diff_lo_name = "LPR",
+    fd_types = c("Qtot")  # keep small/fast; can expand to c("Qs","Qn","Qtot","QsQn")
+) {
+  
+  # All four combined cases
+  combo_grid <- expand.grid(
+    abs  = c(abs_hi_name, abs_lo_name),
+    diff = c(diff_hi_name, diff_lo_name),
+    stringsAsFactors = FALSE
+  )
+  
+  out_list <- map(regions, function(r) {
+    
+    # Read each file ONCE per region
+    abs_path  <- file.path(abs_dir,  paste0("demand_R", r, abs_scen_case,  ".RDS"))
+    diff_path <- file.path(diff_dir, paste0("demand_R", r, diff_scen_case, ".RDS"))
+    
+    demand_abs  <- readRDS(abs_path)
+    demand_diff <- readRDS(diff_path)
+    
+    map_dfr(year_vals, function(yy) {
+      
+      a <- demand_abs %>%
+        filter(year == yy) %>%
+        distinct(iteration, year, GCAM_region_ID, Y.region,
+                 Qs.region, Qn.region, Qtot.region) %>%
+        rename(
+          Qs.region_abs   = Qs.region,
+          Qn.region_abs   = Qn.region,
+          Qtot.region_abs = Qtot.region
+        )
+      
+      # Note: drop Y.region from DIFF (it is difference in income, i.e. zero) so 
+      # ABS version is the only one carried forward
+      d <- demand_diff %>%
+      filter(year == yy) %>%
+        distinct(iteration, year, GCAM_region_ID,
+                 Qs.region, Qn.region, Qtot.region) %>%
+        rename(
+          Qs.region_diff   = Qs.region,
+          Qn.region_diff   = Qn.region,
+          Qtot.region_diff = Qtot.region
+        )
+      
+      # Inner-join aligns the same iteration/year/region across ABS and DIFF
+      ad <- inner_join(a, d, by = c("iteration", "year", "GCAM_region_ID"))
+      
+      if (nrow(ad) == 0) return(NULL)
+      
+      # For each combo (e.g., HD_HPR) and each fd_type (default Qtot),
+      # compute bounds separately in ABS and DIFF, then intersect by filtering ad
+      map_dfr(seq_len(nrow(combo_grid)), function(i) {
+        
+        abs_lab  <- combo_grid$abs[[i]]
+        diff_lab <- combo_grid$diff[[i]]
+        combo    <- paste(abs_lab, diff_lab, sep = "_")
+        
+        map_dfr(fd_types, function(fd) {
+          
+          if (fd == "QsQn") {
+            # If you ever enable this, implement intersection logic analogous to your current QsQn code
+            stop("QsQn not implemented in get_demand_intervals_both() yet.")
+          }
+          
+          col_abs  <- paste0(fd, ".region_abs")
+          col_diff <- paste0(fd, ".region_diff")
+          
+          a_min <- quantile(ad[[col_abs]],  probs = abs_bounds[[abs_lab]]$min  / 100, na.rm = TRUE)
+          a_max <- quantile(ad[[col_abs]],  probs = abs_bounds[[abs_lab]]$max  / 100, na.rm = TRUE)
+          d_min <- quantile(ad[[col_diff]], probs = diff_bounds[[diff_lab]]$min / 100, na.rm = TRUE)
+          d_max <- quantile(ad[[col_diff]], probs = diff_bounds[[diff_lab]]$max / 100, na.rm = TRUE)
+          
+          ad %>%
+            filter(
+              .data[[col_abs]]  >= a_min, .data[[col_abs]]  <= a_max,
+              .data[[col_diff]] >= d_min, .data[[col_diff]] <= d_max
+            ) %>%
+            transmute(
+              measure = paste0(combo, "_", fd),
+              iteration, year, GCAM_region_ID, Y.region,
+              Qs.region = Qs.region_abs,
+              Qn.region = Qn.region_abs,
+              Qtot.region = Qtot.region_abs
+            )
+        })
+      })
+    })
+  })
+  
+  bind_rows(out_list)
+}
 
 # given a data frame with iterations tagged by intervals they fall within, 
 # calculate the iteration that appears with the highest frequency across 
@@ -219,6 +420,35 @@ compute_max_iteration_frequencies <- function(demand_result, hi_param_name,
   })
 }
 
+compute_max_iteration_frequencies_both <- function(demand_result_both) {
+  
+  cases <- sort(unique(demand_result_both$measure))
+  
+  map_dfr(cases, function(case) {
+    
+    demand_subset <- demand_result_both %>% filter(measure == case)
+    if (nrow(demand_subset) == 0) return(NULL)
+    
+    regional_max <- demand_subset %>%
+      distinct(GCAM_region_ID, year, iteration) %>%
+      count(GCAM_region_ID, iteration, name = "freq") %>%
+      group_by(GCAM_region_ID) %>%
+      arrange(desc(freq), .by_group = TRUE) %>%
+      slice(1) %>%
+      ungroup() %>%
+      mutate(case = case)
+    
+    global_max <- demand_subset %>%
+      distinct(GCAM_region_ID, year, iteration) %>%
+      count(iteration, name = "freq") %>%
+      arrange(desc(freq)) %>%
+      slice(1) %>%
+      mutate(GCAM_region_ID = 33, case = case)
+    
+    bind_rows(regional_max, global_max) %>%
+      select(case, GCAM_region_ID, max_iter = iteration, freq)
+  })
+}
 
 build_full_frequency_table <- function(demand_result, max_iterations, regions,
                                        hi_param_name, lo_param_name) {
@@ -294,18 +524,57 @@ build_full_frequency_table <- function(demand_result, max_iterations, regions,
     arrange(case, GCAM_region_ID, food_type, income_cat)
 }
 
+build_full_frequency_table_both <- function(demand_intervals, max_iter_frequencies, regions) {
+  
+  cases <- sort(unique(demand_intervals$measure))
+  
+  map_dfr(cases, function(cc) {
+    
+    di <- demand_intervals %>%
+      filter(measure == cc)
+    
+    # frequency of each iteration by region (across all years included)
+    freq_tbl <- di %>%
+      distinct(GCAM_region_ID, year, iteration) %>%
+      count(GCAM_region_ID, iteration, name = "freq")
+    
+    # max iteration per region for this case (includes World=33 if present)
+    max_tbl <- max_iter_frequencies %>%
+      filter(case == cc) %>%
+      select(GCAM_region_ID, max_iter, max_freq = freq)
+    
+    freq_tbl %>%
+      left_join(max_tbl, by = "GCAM_region_ID") %>%
+      mutate(
+        case = cc,
+        is_max_iter = (iteration == max_iter)
+      ) %>%
+      select(case, GCAM_region_ID, iteration, freq, max_iter, max_freq, is_max_iter)
+  })
+}
 
 build_parameter_tables <- function(max_iterations, param_global, param_FE) {
   
   list(
-    params_global <- map_dfr(seq_len(nrow(max_iterations)), function(i) {
-      param_global[param_global$iteration == max_iterations[i, "max_iter"], ] %>%
-        mutate(measure = max_iterations[i, "case"], freq = max_iterations[i, "freq"]) %>%
+    param_table_global = map_dfr(seq_len(nrow(max_iterations)), function(i) {
+      it   <- max_iterations$max_iter[[i]]
+      case <- max_iterations$case[[i]]
+      freq <- max_iterations$freq[[i]]
+      
+      param_global %>%
+        filter(iteration == it) %>%
+        mutate(measure = case, freq = freq) %>%
         relocate(measure)
     }),
-    params_FE <- map_dfr(seq_len(nrow(max_iterations)), function(i) {
-      param_FE[param_FE$iteration == max_iterations[i, "max_iter"], ] %>%
-        mutate(measure = max_iterations[i, "case"], freq = max_iterations[i, "freq"]) %>%
+    
+    param_table_FE = map_dfr(seq_len(nrow(max_iterations)), function(i) {
+      it   <- max_iterations$max_iter[[i]]
+      case <- max_iterations$case[[i]]
+      freq <- max_iterations$freq[[i]]
+      
+      param_FE %>%
+        filter(iteration == it) %>%
+        mutate(measure = case, freq = freq) %>%
         relocate(measure)
     })
   )
