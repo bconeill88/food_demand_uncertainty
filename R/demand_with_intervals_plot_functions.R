@@ -11,6 +11,12 @@ nice_ymax <- function(x, step = 0.25) {
   ceiling(x / step) * step
 }
 
+# Helper: round limits outward to a "nice" increment (works for negative values too)
+nice_limits <- function(xmin, xmax, step = 0.1) {
+  if (!is.finite(xmin) || !is.finite(xmax)) return(c(NA_real_, NA_real_))
+  c(floor(xmin / step) * step, ceiling(xmax / step) * step)
+}
+
 # Helper: build ensemble uncertainty ribbons (range + central CI, or CI-only)
 build_ensemble_ribbon_data <- function(
     df,
@@ -310,11 +316,11 @@ build_year_ci_bar_data <- function(
   alpha <- (1 - ci_level) / 2
   
   out <- df %>%
-    dplyr::filter(.data$year == target_year)
+    filter(.data$year == target_year)
   
   # optional filter for consumer group if column exists
   if (consumer_col %in% names(out)) {
-    out <- out %>% dplyr::filter(.data[[consumer_col]] == consumer_value)
+    out <- out %>% filter(.data[[consumer_col]] == consumer_value)
   }
   
   # guardrails
@@ -327,9 +333,9 @@ build_year_ci_bar_data <- function(
   
   # summarize across iterations within region for the target year
   sum_ci <- out %>%
-    dplyr::group_by(.data[[region_col]]) %>%
-    dplyr::summarise(
-      n_draws = dplyr::n(),
+    group_by(across(all_of(region_col))) %>%
+    summarise(
+      n_draws = n(),
       med = stats::quantile(.data[[value_col]], probs = 0.5, na.rm = TRUE, names = FALSE),
       lo  = stats::quantile(.data[[value_col]], probs = alpha, na.rm = TRUE, names = FALSE),
       hi  = stats::quantile(.data[[value_col]], probs = 1 - alpha, na.rm = TRUE, names = FALSE),
@@ -337,8 +343,8 @@ build_year_ci_bar_data <- function(
       ymax = if (include_range) max(.data[[value_col]], na.rm = TRUE) else NA_real_,
       .groups = "drop"
     ) %>%
-    dplyr::rename(GCAM_region_ID = .data[[region_col]]) %>%
-    dplyr::mutate(
+    rename(GCAM_region_ID = all_of(region_col)) %>%
+    mutate(
       GCAM_region_ID = as.integer(GCAM_region_ID),
       target_year    = as.integer(target_year),
       value_col      = value_col,
@@ -544,7 +550,7 @@ plot_regional_demand_comparison_pdf <- function(
   # ---- Facet strip logic: region name only above Staples (Qs.region) ----
   p_all <- p_all %>%
     mutate(
-      demand_name = dplyr::case_when(
+      demand_name = case_when(
         as.character(demand_type) == "Qs.region"   ~ "Staples",
         as.character(demand_type) == "Qn.region"   ~ "Non-staples",
         as.character(demand_type) == "Qtot.region" ~ "Total",
@@ -561,7 +567,7 @@ plot_regional_demand_comparison_pdf <- function(
     mutate(facet_id = factor(facet_id, levels = unique(facet_id)))
   
   strip_map <- p_all %>%
-    dplyr::distinct(facet_id, facet_strip) %>%
+    distinct(facet_id, facet_strip) %>%
     tibble::deframe()
   
   # Split into ribbons vs lines
@@ -571,6 +577,21 @@ plot_regional_demand_comparison_pdf <- function(
   if (!("bound_id" %in% names(p_lines))) {
     p_lines <- p_lines %>% mutate(bound_id = NA_character_)
   }
+  
+  # --- DIAG: do groups collapse to NA because bound_id is NA? ---
+  # p_lines_diag <- p_lines %>%
+  #   mutate(group_id = interaction(facet_id, scenario_name, bound_id))
+  # 
+  # message("NA group_id rows: ", sum(is.na(p_lines_diag$group_id)), " / ", nrow(p_lines_diag))
+  # 
+  # # If grouping is correct, each (facet_id, group_id) should map to exactly 1 scenario_name
+  # bad_groups <- p_lines_diag %>%
+  #   filter(is.na(group_id) | group_id == "NA") %>%
+  #   distinct(facet_id, scenario_name) %>%
+  #   count(facet_id, name = "n_scenarios_in_NA_group") %>%
+  #   filter(n_scenarios_in_NA_group > 1)
+  # 
+  # print(bad_groups)
   
   scen_styles <- make_scenario_style_maps(p_lines)
   lt_map    <- scen_styles$lt_map
@@ -674,7 +695,8 @@ plot_regional_demand_comparison_pdf <- function(
         y = demand_value,
         color = scenario_name,
         linetype = scenario_name,
-        group = interaction(facet_id, scenario_name, bound_id)
+        # group = interaction(facet_id, scenario_name, bound_id)
+        group = interaction(facet_id, scenario_name, coalesce(bound_id, "main"))
       ),
       linewidth = 0.8
     ) +
@@ -708,6 +730,352 @@ plot_regional_demand_comparison_pdf <- function(
     page = 1
   )
   n_pg <- ggforce::n_pages(tmp)
+  
+  pdf(file.path(output_dir, filename), width = 8.5, height = 11)
+  for (pg in seq_len(n_pg)) {
+    p <- base + ggforce::facet_wrap_paginate(
+      ~ facet_id,
+      ncol = cols_per_page,
+      nrow = rows_per_page,
+      scales = "free_y",
+      labeller = labeller(facet_id = as_labeller(strip_map)),
+      page = pg
+    )
+    print(p)
+  }
+  dev.off()
+}
+
+# =============================================================================
+# Regional elasticity comparison plots (range + CI ribbons + scenario overlays)
+# =============================================================================
+
+# Regional elasticities: single-region plot that shows uncertainty in regional price 
+# and income elasticities over time with separate panels for own- and cross-price 
+# elasticities and for income elasticities, for staples and non-staples. Optionally, 
+# it also includes up to six scenarios: a reference case as a solid line, and 
+# alternative scenarios (such as high and low demand) as dashed and dotted lines. 
+# Single scenarios are organized in two groups of three, one that plots in blue and 
+# one in orange.
+
+# Regional elasticities: single-region builder (range + CI ribbons + scenario overlays)
+plot_regional_elasticity_comparison <- function(
+    elast_reg,                        # regional ensemble (iterations)
+    reg_num,
+    ensemble_name = "Ensemble",
+    
+    # elasticity columns in elast_reg and in scenario data frames
+    elast_cols = c(
+      "elast.ss",  # own-price staples
+      "elast.nn",  # own-price non-staples
+      "elast.sn",  # cross-price elasticity for staples
+      "elast.ns",  # cross-price elasticity for non-staples
+      "eta.s",   # income elasticity staples
+      "eta.n"    # income elasticity non-staples
+    ),
+    
+    # pretty facet names (same order as elast_cols)
+    elast_names = c(
+      "Own-price (Staples)",
+      "Own-price (Non-staples)",
+      "Cross-price (Staples)",
+      "Cross-price (Non-staples)",
+      "Income (Staples)",
+      "Income (Non-staples)"
+    ),
+    
+    # set1 (orange)
+    scen_solid_1  = NULL, scen_solid_name_1  = NULL,
+    scen_dashed_1 = NULL, scen_dashed_name_1 = NULL,
+    scen_dotted_1 = NULL, scen_dotted_name_1 = NULL,
+    
+    # set2 (blue)
+    scen_solid_2  = NULL, scen_solid_name_2  = NULL,
+    scen_dashed_2 = NULL, scen_dashed_name_2 = NULL,
+    scen_dotted_2 = NULL, scen_dotted_name_2 = NULL,
+    
+    ci_level = 0.90,
+    year_min = 2021,
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID",
+    return_data = FALSE
+) {
+  
+  stopifnot(ci_level > 0, ci_level <= 1)
+  stopifnot(length(elast_cols) == 6)
+  stopifnot(all(elast_cols %in% names(elast_reg)))
+  
+  # --- Ensemble ribbons (range + central CI), years >= year_min ---
+  ribbon_res <- build_ensemble_ribbon_data(
+    df             = elast_reg,
+    reg_num        = reg_num,
+    demand_cols    = elast_cols,
+    demand_levels  = elast_cols,
+    ci_level       = ci_level,
+    year_min       = year_min,
+    consumer_col   = consumer_col,
+    consumer_value = consumer_value,
+    region_col     = region_col,
+    include_range  = TRUE
+  )
+  
+  ribbon_data <- ribbon_res$ribbon_data
+  ci_label    <- ribbon_res$ci_label
+  
+  # --- Scenario overlays (same helper as demand plots) ---
+  comparison_data <- bind_rows(
+    reshape_scenario_long(scen_solid_1,  scen_solid_name_1,  "set1", "solid",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col),
+    
+    reshape_scenario_long(scen_dashed_1, scen_dashed_name_1, "set1", "dashed",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col),
+    
+    reshape_scenario_long(scen_dotted_1, scen_dotted_name_1, "set1", "dotted",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col),
+    
+    reshape_scenario_long(scen_solid_2,  scen_solid_name_2,  "set2", "solid",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col),
+    
+    reshape_scenario_long(scen_dashed_2, scen_dashed_name_2, "set2", "dashed",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col),
+    
+    reshape_scenario_long(scen_dotted_2, scen_dotted_name_2, "set2", "dotted",
+                          reg_num = reg_num, year_min = year_min,
+                          demand_cols = elast_cols, demand_levels = elast_cols,
+                          consumer_group = consumer_value,
+                          consumer_col = consumer_col, region_col = region_col)
+  )
+  
+  if (is.null(comparison_data)) comparison_data <- tibble()
+  
+  # --- Combine ribbons + scenarios; add display names for facet strips ---
+  out <- bind_rows(ribbon_data, comparison_data) %>%
+    mutate(
+      demand_type = factor(demand_type, levels = elast_cols),
+      elast_name  = factor(elast_names[match(as.character(demand_type), elast_cols)],
+                           levels = elast_names)
+    )
+  
+  if (return_data) return(out)
+  
+  # Optional single-region ggplot (kept consistent with your demand function)
+  p_ribbon <- out %>% filter(!is.na(band))
+  p_lines  <- out %>% filter(!is.na(scenario_name))
+  
+  scen_styles <- make_scenario_style_maps(p_lines)
+  band_styles <- make_band_fill_map(p_ribbon)
+  
+  p_ribbon <- p_ribbon %>%
+    mutate(band = factor(band, levels = band_styles$band_levels))
+  
+  ggplot() +
+    geom_ribbon(
+      data = p_ribbon,
+      aes(x = year, ymin = ribbon_ymin, ymax = ribbon_ymax, fill = band,
+          group = interaction(GCAM_region_ID, demand_type, band))
+    ) +
+    geom_line(
+      data = p_lines,
+      aes(x = year, y = demand_value, color = scenario_name, linetype = scenario_name,
+          group = interaction(GCAM_region_ID, demand_type, scenario_name)),
+      linewidth = 0.8
+    ) +
+    scale_linetype_manual(values = scen_styles$lt_map) +
+    scale_color_manual(values = scen_styles$color_map) +
+    scale_fill_manual(name = "Ensemble", values = band_styles$fill_values) +
+    facet_wrap(~ elast_name, ncol = 3, scales = "free_y") +
+    theme_minimal(base_size = 13) +
+    labs(x = "Year", y = "Elasticity", color = "Scenario", linetype = "Scenario")
+}
+
+# Regional elasticities: multi-page PDF; takes data frame of plots produced by
+# plot_regional_elasticity_comparison and combines them into a single multi-region pdf,
+# with each region labeled and a single legend per page.
+plot_regional_elasticity_comparison_pdf <- function(
+    p_all,
+    region_mapping,
+    output_dir,
+    cols_per_page = 3,
+    rows_per_page = 4,
+    filename = "elasticities_all_regions_ens_bc.pdf",
+    y_step = 0.1
+) {
+  
+  # ---- Join region names and enforce elasticity ordering ----
+  # demand_type levels in p_all should already be in desired order; enforce explicitly if needed.
+  if (!is.factor(p_all$demand_type)) {
+    p_all <- p_all %>% mutate(demand_type = factor(demand_type))
+  }
+  elast_levels <- levels(p_all$demand_type)
+  
+  p_all <- p_all %>%
+    mutate(GCAM_region_ID = as.character(GCAM_region_ID)) %>%
+    left_join(
+      region_mapping %>% mutate(GCAM_region_ID = as.character(GCAM_region_ID)),
+      by = "GCAM_region_ID"
+    ) %>%
+    mutate(
+      region_label = if_else(is.na(region), GCAM_region_ID, region),
+      demand_type  = factor(demand_type, levels = elast_levels)
+    ) %>%
+    select(-region)
+  
+  # Ensure bound_id exists for grouping (CI-bound lines etc.)
+  if (!("bound_id" %in% names(p_all))) {
+    p_all <- p_all %>% mutate(bound_id = NA_character_)
+  }
+  
+  # ---- Pretty panel labels (use elast_name if present, else demand_type) ----
+  # Also: region name only on the first panel of each region block.
+  first_type <- elast_levels[[1]]  # should be "own staples" panel
+  
+  if ("elast_name" %in% names(p_all)) {
+    name_map <- p_all %>% distinct(demand_type, elast_name) %>% tibble::deframe()
+    p_all <- p_all %>%
+      mutate(panel_name = as.character(name_map[as.character(demand_type)]))
+  } else {
+    p_all <- p_all %>% mutate(panel_name = as.character(demand_type))
+  }
+  
+  p_all <- p_all %>%
+    mutate(
+      facet_id = paste(region_label, as.character(demand_type), sep = "__"),
+      facet_strip = if_else(
+        as.character(demand_type) == first_type,
+        paste0(region_label, "\n", panel_name),  # region name only on first panel
+        paste0("\n", panel_name)                 # blank region line to preserve strip height
+      )
+    ) %>%
+    arrange(region_label, demand_type) %>%
+    mutate(facet_id = factor(facet_id, levels = unique(facet_id)))
+  
+  strip_map <- p_all %>%
+    distinct(facet_id, facet_strip) %>%
+    tibble::deframe()
+  
+  # ---- Split ribbons vs lines ----
+  p_ribbon <- p_all %>% filter(!is.na(band))
+  p_lines  <- p_all %>% filter(!is.na(scenario_name))
+  
+  # ---- Global y-limits: SIX separate harmonizations (by elasticity type) ----
+  type_limits <- p_all %>%
+    group_by(demand_type) %>%
+    summarise(
+      ymin = min(c(ribbon_ymin, demand_value), na.rm = TRUE),
+      ymax = max(c(ribbon_ymax, demand_value), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rowwise() %>%
+    mutate(
+      lims = list(nice_limits(ymin, ymax, step = y_step)),
+      ymin_nice = lims[[1]][1],
+      ymax_nice = lims[[1]][2]
+    ) %>%
+    ungroup() %>%
+    select(demand_type, ymin_nice, ymax_nice)
+  
+  # ---- Data to force per-facet y ranges via geom_blank() ----
+  min_year <- suppressWarnings(min(p_all$year, na.rm = TRUE))
+  if (!is.finite(min_year)) min_year <- 2015
+  
+  facet_tbl <- p_all %>% distinct(facet_id, demand_type)
+  
+  blank_df <- facet_tbl %>%
+    left_join(type_limits, by = "demand_type") %>%
+    select(facet_id, ymin_nice, ymax_nice) %>%
+    tidyr::uncount(weights = 2, .id = "k") %>%
+    mutate(
+      year = min_year,
+      demand_value = if_else(k == 1, ymin_nice, ymax_nice)
+    ) %>%
+    select(facet_id, year, demand_value)
+  
+  # ---- Linetype + color maps (scenario lines) ----
+  scen_styles <- make_scenario_style_maps(p_lines)
+  lt_map    <- scen_styles$lt_map
+  color_map <- scen_styles$color_map
+  
+  # ---- Fill map for ribbons (Range first, then CI) ----
+  band_styles <- make_band_fill_map(p_ribbon)
+  band_levels <- band_styles$band_levels
+  fill_values <- band_styles$fill_values
+  
+  p_ribbon <- p_ribbon %>%
+    mutate(band = factor(band, levels = band_levels))
+  
+  # ---- Base plot: y-range forcing + ribbon + lines ----
+  base <- ggplot() +
+    geom_blank(
+      data = blank_df,
+      aes(x = year, y = demand_value, group = facet_id)
+    ) +
+    geom_ribbon(
+      data = p_ribbon,
+      aes(
+        x = year,
+        ymin = ribbon_ymin,
+        ymax = ribbon_ymax,
+        fill = band,
+        group = interaction(facet_id, band)
+      )
+    ) +
+    geom_line(
+      data = p_lines,
+      aes(
+        x = year,
+        y = demand_value,
+        color = scenario_name,
+        linetype = scenario_name,
+        # group = interaction(facet_id, scenario_name, bound_id)
+        group = interaction(facet_id, scenario_name, coalesce(bound_id, "main"))
+      ),
+      linewidth = 0.8
+    ) +
+    scale_linetype_manual(values = lt_map) +
+    scale_color_manual(values = color_map) +
+    scale_fill_manual(name = "Ensemble", values = fill_values, drop = FALSE) +
+    guides(
+      fill     = guide_legend(order = 1),
+      color    = guide_legend(order = 2),
+      linetype = guide_legend(order = 2)
+    ) +
+    labs(
+      x = "Year",
+      y = "Elasticity",
+      color = "Scenario",
+      linetype = "Scenario"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(strip.text = element_text(size = 10))
+  
+  # ---- Determine number of pages (same pattern as demand pdf function) ----
+  tmp <- base + ggforce::facet_wrap_paginate(
+    ~ facet_id,
+    ncol = cols_per_page,
+    nrow = rows_per_page,
+    scales = "free_y",
+    labeller = labeller(facet_id = as_labeller(strip_map)),
+    page = 1
+  )
+  n_pg <- ggforce::n_pages(tmp)
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   
   pdf(file.path(output_dir, filename), width = 8.5, height = 11)
   for (pg in seq_len(n_pg)) {
@@ -965,15 +1333,15 @@ plot_decile_demand_comparison_pdf <- function(
   
   # ---- Harmonized y-axis limits (global across all regions/deciles) ----
   ymax_sn <- p_all %>%
-    dplyr::filter(demand_type %in% c("Qs", "Qn")) %>%
-    dplyr::summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
-    dplyr::pull(mx) %>%
+    filter(demand_type %in% c("Qs", "Qn")) %>%
+    summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+    pull(mx) %>%
     nice_ymax(step = 0.25)
   
   ymax_tot <- p_all %>%
-    dplyr::filter(demand_type %in% c("Qtot")) %>%
-    dplyr::summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
-    dplyr::pull(mx) %>%
+    filter(demand_type %in% c("Qtot")) %>%
+    summarise(mx = max(c(ribbon_ymax, demand_value), na.rm = TRUE)) %>%
+    pull(mx) %>%
     nice_ymax(step = 0.25)
   
   # ---- Data to force facet y ranges via geom_blank() ----
@@ -998,25 +1366,25 @@ plot_decile_demand_comparison_pdf <- function(
   
   for (reg in sort(unique(p_all$region_label))) {
     
-    df_ribbon <- p_ribbon %>% dplyr::filter(region_label == reg)
-    df_lines  <- p_lines  %>% dplyr::filter(region_label == reg)
+    df_ribbon <- p_ribbon %>% filter(region_label == reg)
+    df_lines  <- p_lines  %>% filter(region_label == reg)
     
-    facet_tbl <- dplyr::bind_rows(
-      df_ribbon %>% dplyr::select(facet_id, demand_type),
-      df_lines  %>% dplyr::select(facet_id, demand_type)
-    ) %>% dplyr::distinct()
+    facet_tbl <- bind_rows(
+      df_ribbon %>% select(facet_id, demand_type),
+      df_lines  %>% select(facet_id, demand_type)
+    ) %>% distinct()
     
     blank_df <- facet_tbl %>%
-      dplyr::mutate(
-        ymax = dplyr::if_else(as.character(demand_type) == "Qtot", ymax_tot, ymax_sn)
+      mutate(
+        ymax = if_else(as.character(demand_type) == "Qtot", ymax_tot, ymax_sn)
       ) %>%
-      dplyr::select(facet_id, ymax) %>%
+      select(facet_id, ymax) %>%
       tidyr::uncount(weights = 2, .id = "k") %>%
-      dplyr::mutate(
+      mutate(
         year = min_year,
-        demand_value = dplyr::if_else(k == 1, 0, ymax)
+        demand_value = if_else(k == 1, 0, ymax)
       ) %>%
-      dplyr::select(facet_id, year, demand_value)
+      select(facet_id, year, demand_value)
     
     base <- ggplot() +
       geom_blank(
@@ -1130,13 +1498,13 @@ plot_region_ci_bars_one_year <- function(
   
   # ordering of regions on the x-axis
   if (sort_by == "median") {
-    bar_df <- bar_df %>% dplyr::arrange(.data$med)
+    bar_df <- bar_df %>% arrange(.data$med)
   } else {
-    bar_df <- bar_df %>% dplyr::arrange(.data$GCAM_region_ID)
+    bar_df <- bar_df %>% arrange(.data$GCAM_region_ID)
   }
   
   bar_df <- bar_df %>%
-    dplyr::mutate(
+    mutate(
       region_factor = factor(GCAM_region_ID, levels = unique(GCAM_region_ID))
     )
   
