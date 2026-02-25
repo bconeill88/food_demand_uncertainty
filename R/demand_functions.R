@@ -100,6 +100,18 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
     inputdata_region <- inputdata %>% filter(GCAM_region_ID == region_id)
     if (nrow(inputdata_region) == 0) stop("No inputdata for region ", region_id)
     
+    # detect whether input is by consumer group or already regional totals
+    has_consumer <- "gcam-consumer" %in% names(inputdata_region)
+    
+    # standardize income column so downstream code can always use inputdata_region$Y
+    if (!("Y" %in% names(inputdata_region))) {
+      if ("Y.region" %in% names(inputdata_region)) {
+        inputdata_region <- inputdata_region %>% mutate(Y = .data$Y.region)
+      } else {
+        stop("inputdata_region must contain either 'Y' or 'Y.region' for region ", region_id)
+      }
+    }
+    
     # extract region-specific bias data for all iterations
     biasdata_region <- biasdata %>% filter(GCAM_region_ID == region_id)
     if (nrow(biasdata_region) == 0) stop("No biasdata for region ", region_id)
@@ -133,8 +145,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
       
       # if consumer groups are present in data, match consumer ordering so that
       # when passed to food.dmnd, vectorization will match the variables correctly
-      if("gcam-consumer" %in% names(inputdata_region) && 
-         "gcam-consumer" %in% names(biasdata_reg_iter)) {
+      if(has_consumer && "gcam-consumer" %in% names(biasdata_reg_iter)) {
         
         consumer_order <- match(inputdata_region$`gcam-consumer`, 
                                 biasdata_reg_iter$`gcam-consumer`)
@@ -148,7 +159,8 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
                                    rgn = region_id, # rgn argument, not needed
                                    regparams_reg_iter$staples_FE, 
                                    biasdata_reg_iter$RBs, 
-                                   biasdata_reg_iter$RBn) # %>%
+                                   biasdata_reg_iter$RBn,
+                                   Qs_min, Qn_min) # %>%
       
       demand_reg_iter <- demand_reg_iter %>%
         
@@ -162,10 +174,10 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
         # this must be done separately so that income elasticities are available
         bind_cols(calc_price_elast(., param_structure)) %>%
         # add input data
-        bind_cols(select(inputdata_region, Y, Ps, Pn, Y.region))
+        bind_cols(select(inputdata_region, any_of(c("Y","Ps","Pn","Y.region"))))
       
       # include additional columns if present
-      if ("gcam-consumer" %in% colnames(inputdata_region)) {
+      if (has_consumer) {
         demand_reg_iter <- bind_cols(select(inputdata_region, `gcam-consumer`), demand_reg_iter)
       }
       if ("year" %in% colnames(inputdata_region)) {
@@ -175,39 +187,34 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
       return(demand_reg_iter)
     })
     
-    # finalize regional results 
+    # finalize regional results
     demand_reg <- demand_reg %>%
-      # add total demand, total food budget share, and region name and number
       mutate(
         Qtot = Qs + Qn,
         alpha.t = alpha.s + alpha.n,
         GCAM_region_ID = unique(regparams_region$GCAM_region_ID),
         region = unique(regparams_region$region)
       ) %>%
+      group_by(across(any_of(c("region", "year", "iteration")))) %>%
       # add regional demand per cap -- unweighted average across deciles
-      group_by(region,year,iteration) %>%
-      mutate(Qs.region = if_else(
-        is.na(Qs),  # check if any NA exists
-        NA_real_,  # return NA if any input is NA
-        mean(Qs)  # otherwise, compute mean
-      )) %>%
-      mutate(Qn.region = if_else(
-        is.na(Qn),  # check if any NA exists
-        NA_real_,  # return NA if any input is NA
-        mean(Qn)  # otherwise, compute weighted mean
-      )) %>%
+      # (if no deciles present, mean will simply return the single value)
+      mutate(
+        Qs.region = if_else(is.na(Qs), NA_real_, mean(Qs)),
+        Qn.region = if_else(is.na(Qn), NA_real_, mean(Qn))
+      ) %>%
       ungroup() %>%
       mutate(Qtot.region = Qs.region + Qn.region) %>%
-      # order columns for readability
-      select(GCAM_region_ID, region, year, `gcam-consumer`, 
-             Y, Ps, Pn, 
-             Qs, Qn, Qm, Qtot, 
-             RBs, RBn, 
-             Y.region, Qs.region, Qn.region, Qtot.region, 
-             alpha.s, alpha.n, alpha.m, alpha.t,
-             eta.s, eta.n, elast.ss, elast.nn, elast.sn, elast.ns,
-             LL, iteration,
-             everything())
+      select(
+        any_of(c("GCAM_region_ID","region","year","gcam-consumer",
+                 "Y","Ps","Pn",
+                 "Qs","Qn","Qm","Qtot",
+                 "RBs","RBn",
+                 "Y.region","Qs.region","Qn.region","Qtot.region",
+                 "alpha.s","alpha.n","alpha.m","alpha.t",
+                 "eta.s","eta.n","elast.ss","elast.nn","elast.sn","elast.ns",
+                 "LL","iteration")),
+        everything()
+      )
     
     # conditionally save regional result to sub-directory created above
     if (save_result) {
@@ -241,7 +248,7 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
 get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams, 
                                  inputdata, regions, output_dir, scen, case, baseyr, 
                                  Qs_min, Qn_min,
-                                 tol = 0.01, max_iterations = 5) {
+                                 tol = 0.01, max_iterations = 20) {
   
   # define list of region names, iterations, and their combinations to loop over
   region_names <- inputdata %>%
@@ -254,6 +261,12 @@ get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams,
   
   # get input data for the base year for demand calculations
   inputdata_baseyr <- inputdata %>% filter(year == baseyr)
+  
+  # guard against input data not being available 
+  if (nrow(inputdata_baseyr) == 0) {
+    stop("No rows in inputdata for baseyr = ", baseyr,
+         ". Upstream input file is missing base-year data.")
+  }
   
   # loop over all regions and iterations, applying function to solve for bias terms 
   # for a given region and iteration in a single year; collect results into a single df;
@@ -379,6 +392,13 @@ get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams,
     
     # end of diagnostics code
     
+    # compute once + validate
+    reg_rows <- inputdata_baseyr %>% filter(region == reg_nm)
+    stopifnot(nrow(reg_rows) > 0)
+    
+    reg_id <- reg_rows %>% slice(1) %>% pull(GCAM_region_ID)
+    stopifnot(length(reg_id) == 1, !is.na(reg_id))
+    
     # infinite loop, break on convergence or max iterations
     repeat {
       
@@ -395,16 +415,37 @@ get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams,
         Qs_min = Qs_min,
         Qn_min = Qn_min,
         inputdata = inputdata_baseyr,
-        regions = inputdata_baseyr %>% 
-          filter(region == reg_nm) %>% 
-          slice(1) %>% 
-          pull(GCAM_region_ID),
+        regions = reg_id,
         output_dir = output_dir,
         scen = scen,
         case = case,
-        progress = FALSE,    # don't display messages
+        progress = FALSE,
         save_result = FALSE
       )
+      
+      # --- DIAGNOSTIC: verify demand actually has rows for this region ---
+      d_reg <- demand %>% filter(region == reg_nm)
+      
+      if (nrow(d_reg) == 0) {
+        message("DIAG: EMPTY demand for region='", reg_nm, "', iter=", iter,
+                " | demand rows=", nrow(demand),
+                " | unique(demand$region) sample=",
+                paste(utils::head(sort(unique(demand$region)), 10), collapse = ", "),
+                " | unique(demand$GCAM_region_ID) sample=",
+                paste(utils::head(sort(unique(demand$GCAM_region_ID)), 10), collapse = ", ")
+        )
+        stop("Demand returned no rows for this region label; likely region-name mismatch or missing region column.")
+      }
+      
+      # Also check reference data presence (same idea)
+      ref_reg <- demand_ref_baseyr %>% filter(region == reg_nm)
+      if (nrow(ref_reg) == 0) {
+        message("DIAG: EMPTY demand_ref_baseyr for region='", reg_nm,
+                "' | unique(demand_ref_baseyr$region) sample=",
+                paste(utils::head(sort(unique(demand_ref_baseyr$region)), 10), collapse = ", ")
+        )
+        stop("Reference base-year demand missing for this region label.")
+      }
       
       # calculate difference from observed (reference) consumption and update bias terms
       bias_terms_next <- demand_ref_baseyr %>%
@@ -557,7 +598,7 @@ get_bias_terms_solve <- function(demand_ref_baseyr, globalparams, regparams,
 # the demand function, produces demand equal to observed demand, implemented in 
 # get_bias_terms_solve().
 food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs, 
-                             output_dir, scen, case, baseyr, 
+                             output_dir, gcam_dir, scen, case, baseyr, 
                              Qs_min, Qn_min,
                              save_result = TRUE) {
   
@@ -568,9 +609,8 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
   # Get gcam reference scenario results to correct to; only total regional demand
   # is used, so doesn't matter which GCAM scenario is used; we use Ref_ML here
   demand_ref_baseyr <- 
-    readRDS(
-      paste0("data/processed/", output_dir, 
-             "/results_gcam/gcamoutput_Ref_ML.RDS")
+    readRDS(file.path("data/processed", output_dir, gcam_dir,
+             "gcamoutput_Ref_ML.RDS")
     ) %>%
     filter(year == baseyr) %>%
     select(GCAM_region_ID, region, `gcam-consumer`, year,
@@ -649,22 +689,59 @@ food.dmnd.ens_bc <- function(globalparams, regparams, inputdata, regionIDs,
   }
 }
 
-# function for calculating demand from observed prices and income, global and
-# regional parameter data, for a given measure (scen = ML, LPR, etc.) and
-# set of regions; results file includes observed prices and income, observed
-# demand, and modeled demand and elasticities; saved to Obs directory
-food.dmnd.obs <- function(globalparamdata,FEdata,obsdata,scen,regions) {
+# Function for calculating demand from observed prices and income for a set of global
+# and regional parameters. Demand is calculated for all regions in the observational
+# data and all iterations in the parameter data.
+# Returns observed prices and income, observed demand, and modeled demand and 
+# elasticities. Results saved in directory given by output_dir.
+food.dmnd.obs <- function(globalparamdata, FEdata, obsdata, output_dir) {
   
-  print(paste0("calculating demand from observations for scenario ",scen))
+  # zero bias terms to use in demand calculations
+  bias_terms <- FEdata %>% select(GCAM_region_ID, iteration) %>%
+    mutate(RBs = 0, RBn = 0)
   
-  demand_obs <- data.frame()
-  # get global parameter data for the scenario
-  scen_globaldata <- globalparamdata[globalparamdata$measure == scen,]
+  # calculate demand
+  demand <- food.dmnd.wrapper(
+    globalparams = params_global,
+    regparams = params_FE,
+    biasdata = bias_terms,
+    Qs_min = 0,
+    Qn_min = 0,
+    inputdata = obs,
+    regions = regionIDs,
+    output_dir = output_dir,
+    scen = scen,
+    case = case, 
+    progress = TRUE,
+    save_result = save_result
+  )
+  
+  
+  for(scen in scenarios) {
+    
+    message("Calculating demand from observations for scenario ", scen)
+    
+    # get global parameters for the scenario
+    params_global <- globalparamdata %>% filter(case == scen)
+    
+    for(reg in regions ) {
+      
+      # get observations for the region
+      obs <- obsdata %>% filter(GCAM_region_ID == reg)
+      # get FE parameters for the scenario and region
+      params_FE <- FEdata %>% filter(case == scen & GCAM_region_ID == reg)
+      
+      
+    }
+    
+    
+  }
+  
   for(r in 1:length(regions)) {
-    # get observations for the region
-    reg_obs <- obsdata[obsdata$GCAM_region_ID == regions[r],]
-    # get FE parameter for the scenario and region
-    reg_FEdata <- FEdata[FEdata$measure == scen & FEdata$GCAM_region_ID == regions[r],]
+   
+    
+    
+    
     # calculate demand for the region based on observations
     reg_dmnd <-
       food.dmnd.plus.FE.regions(scen_globaldata,reg_FEdata,reg_obs,"Obs","",regions[r]) %>%
