@@ -89,6 +89,7 @@ make_density_plots_global <- function(
     title   = NULL,
     subtitle = NULL,
     line_width = 1,
+    font_size = 10,
     facet_ncol = 3
 ) {
   
@@ -154,7 +155,7 @@ make_density_plots_global <- function(
   g <- ggplot(paramdata_long, aes(x = value)) +
     geom_density(linewidth = line_width, color = "black") +
     facet_wrap(~ parameter, ncol = facet_ncol, scales = "free") +
-    theme(strip.text = element_text(size = 15)) +
+    theme(strip.text = element_text(size = font_size)) +
     ggtitle(title, subtitle = subtitle)
   
   if (!is.null(vline_df)) {
@@ -178,7 +179,8 @@ make_density_plots_FE <- function(
     vline_colors   = NULL,            
     title          = NULL,
     subtitle       = NULL,
-    line_width     = 1,
+    line_width = 1,
+    font_size = 10,
     facet_ncol     = 4,
     regions_per_page = 16
 ) {
@@ -257,7 +259,7 @@ make_density_plots_FE <- function(
     g <- ggplot(df_sub, aes(x = .data[[value_col]])) +
       geom_density(linewidth = line_width, color = "black") +
       facet_wrap(~ region, ncol = facet_ncol, scales = "free") +
-      theme(strip.text = element_text(size = 15)) +
+      theme(strip.text = element_text(size = font_size)) +
       labs(
         title    = title,
         subtitle = subtitle,
