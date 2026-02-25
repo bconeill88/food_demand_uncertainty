@@ -11,3 +11,5 @@ amb_GCAM_compare.xlsx
 scripts/03c_calculate_demand_GCAM_MLincome.R
 scripts/03c_calculate_demand_GCAM_MLprice.R
 scripts/03c_calculate_demand_GCAM_MLscale.R
+rename_files.sh
+strip_chars.sh
