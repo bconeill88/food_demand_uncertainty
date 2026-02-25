@@ -26,16 +26,16 @@ ensure_package(tidyverse)
 
 # load parameter ensembles and sub-samples
 param_data_global_clean <- 
-  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+  readRDS(file.path("data", "processed", procdata_dir, clean_data_dir, 
                     "param_data_global_clean.RDS")) 
 param_data_FE_clean <-
-  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+  readRDS(file.path("data", "processed", procdata_dir, clean_data_dir, 
                     "param_data_FE_clean.RDS")) 
 param_data_global_clean_sub <- 
-  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+  readRDS(file.path("data", "processed", procdata_dir, clean_data_dir, 
                     "param_data_global_clean_sub.RDS")) 
 param_data_FE_clean_sub <- 
-  readRDS(file.path("data", "processed", procdata_dir, "inputs", 
+  readRDS(file.path("data", "processed", procdata_dir, clean_data_dir, 
                     "param_data_FE_clean_sub.RDS")) 
 
 # ML and independent uncertainty interval parameters
@@ -105,21 +105,21 @@ param_data_FE_clean_sub <- rbind(param_data_FE_clean_sub, new_samples)
 # Save results
 # ML and uncertainty interval parameters, including csv versions for Kanishka
 saveRDS(params_ML_intervals_global,
-        file = file.path("data", "processed", procdata_dir,
+        file = file.path("data", "processed", procdata_dir, param_intervals_dir,
                          "params_ML_intervals_global.RDS"))
 saveRDS(params_ML_intervals_FE,
-        file = file.path("data", "processed", procdata_dir,
+        file = file.path("data", "processed", procdata_dir, param_intervals_dir,
                          "params_ML_intervals_FE.RDS"))
 write.csv(params_ML_intervals_global,
-        file = file.path("data", "processed", procdata_dir,
+        file = file.path("data", "processed", procdata_dir, param_intervals_dir,
                          "params_ML_intervals_global.csv"))
 write.csv(params_ML_intervals_FE,
-        file = file.path("data", "processed", procdata_dir,
+        file = file.path("data", "processed", procdata_dir, param_intervals_dir,
                          "params_ML_intervals_FE.csv"))
 # potentially modifed parameter sub-samples
 saveRDS(param_data_global_clean_sub,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_global_clean_sub.RDS"))
 saveRDS(param_data_FE_clean_sub,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_FE_clean_sub.RDS"))

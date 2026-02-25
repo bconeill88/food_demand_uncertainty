@@ -53,8 +53,8 @@ gcamoutput_Ref_LD <- readRDS(file.path("data", "processed", procdata_dir,
 # load parameter files
 
 # ensembles of parameters from MCMC; files read in are produced by running 01_clean_data.R
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_global_clean_sub.RData"))
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_FE_clean_sub.RData"))
+load(file.path("data", "processed", procdata_dir, clean_data_dir, "param_data_global_clean_sub.RData"))
+load(file.path("data", "processed", procdata_dir, clean_data_dir, "param_data_FE_clean_sub.RData"))
 
 # ML parameter values; files read in are produced by running 02_parameter_uncertainty_intervals.R
 load(file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RData"))
@@ -274,8 +274,6 @@ lapply(scen_list_demand,function(x) {
     
     # checking results in various ways
     
-    # load("data/raw/GCAM_region_ID_mapping.Rdata")
-    # 
     # iterationML <- params_ML_intervals_global %>% 
     #   filter(measure == "ML") %>% 
     #   pull(iteration)

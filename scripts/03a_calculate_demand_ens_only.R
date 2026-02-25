@@ -31,8 +31,8 @@ if (length(args) > 0) {
 # load parameter files
 
 # ensembles of parameters from MCMC; files read in are produced by running 01_clean_data.R
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_global_clean_sub.RData"))
-load(file.path("data", "processed", procdata_dir, "inputs", "param_data_FE_clean_sub.RData"))
+load(file.path("data", "processed", procdata_dir, clean_data_dir, "param_data_global_clean_sub.RData"))
+load(file.path("data", "processed", procdata_dir, clean_data_dir, "param_data_FE_clean_sub.RData"))
 
 # Calculate demand and elasticities for the subsample of parameter iterations, for all
 # regions, given a dataframe of income and prices, and save regional results, for each
