@@ -1,5 +1,5 @@
 # Read in raw parameter ensemble data and observational data from /data/raw in
-# the subdirectory given by rawdata_dir (in common_definitions.R). Clean and
+# the subdirectories given by mcmc_dir and obs_dir (in common_definitions.R). Clean and
 # save data in /data/processed in the subdirectory given by procdata_dir
 
 # load functions and common definitions
@@ -13,13 +13,13 @@ ensure_package(tidyverse)
 # read in data files
 # ensemble of global parameters
 param_data_global_raw <- 
-  read.table(file.path("data", "raw", rawdata_dir, param_data_global_file), header = TRUE)
+  read.table(file.path("data", "raw", mcmc_dir, param_data_global_file), header = TRUE)
 # ensemble of regional fixed effect parameters
 param_data_FE_raw <-
-  read.table(file.path("data", "raw", rawdata_dir, param_data_FE_file), header = TRUE) 
+  read.table(file.path("data", "raw", mcmc_dir, param_data_FE_file), header = TRUE) 
 # observational data for 32 GCAM regions
 obs_data <- 
-  read.csv(file.path("data", "raw", rawdata_dir, obs_data_file), header = TRUE)
+  read.csv(file.path("data", "raw", obs_dir, obs_data_file), header = TRUE)
 
 # Make sure only iterations in common between datasets are retained
 
@@ -93,17 +93,17 @@ param_data_FE_clean_sub <- param_data_FE_clean %>%
 
 # save cleaned and sampled files
 saveRDS(param_data_global_clean,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_global_clean.RDS"))
 saveRDS(param_data_global_clean_sub,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_global_clean_sub.RDS"))
 saveRDS(param_data_FE_clean,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_FE_clean.RDS"))
 saveRDS(param_data_FE_clean_sub,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "param_data_FE_clean_sub.RDS"))
 saveRDS(obs_data,
-        file = file.path("data", "processed", procdata_dir, "inputs", 
+        file = file.path("data", "processed", procdata_dir, clean_data_dir, 
                          "obs_data.RDS"))
