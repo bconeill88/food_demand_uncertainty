@@ -28,11 +28,8 @@ args <- commandArgs(trailingOnly = TRUE)
 if (length(args) > 0) {
   reg_list <- c(as.numeric(args[1]))
 } else {
-  reg_list <- c(1:29,31,32) # skip Taiwan (30), no post-2015 output from GCAM
+  reg_list <- c(1:32)
 }
-
-# load region name/number mapping
-load(file.path("data", "raw", "GCAM_region_ID_mapping.Rdata"))
 
 # directory for parameter ensembles
 input_dir <- file.path("data", "processed", procdata_dir, "inputs")
@@ -43,7 +40,7 @@ if(ABS) {
   # define names for high and low interval parameter sets
   hi_name <- "HD"
   lo_name <- "LD"
-
+  
   # define scenario case; specific to demand or demand differences
   scen_case <- "_ens_bc"
   
@@ -105,14 +102,10 @@ if(ABS) {
 
 if (ABS || DIFF) {
   
-  # define corresponding column names used several times below
-  hi_col_name <- paste0(hi_name, "_Qtot")
-  lo_col_name <- paste0(lo_name, "_Qtot")
+  message("Identifying parameters for H/L outcomes")
   
-  message("Identifying parameters for H/L parameters")
-  
-  # calculate parameters by taking iteration that falls most frequently in high/low intervals
-  # lapply(scen_list_demand,function(x)
+  # calculate parameters by taking iteration that falls most frequently in high/low 
+  # intervals of either absolute or difference in demand
   make_HL_params_freq(
     year_vals = year_iter, 
     data_dir = procdata_dir, 
@@ -129,9 +122,13 @@ if (ABS || DIFF) {
     save_outputs = TRUE
   )
   
-  message("Finished identifying parameters for H/L intervals")
+  message("Finished identifying parameters")
   
-  # create and save tables of frequencies and iteration numbers, as results
+  # --------------------------------------------------------------------------
+  # Create + save tables of frequencies and iteration numbers
+  # --------------------------------------------------------------------------
+  
+  message("Creating summary tables of max frequencies and max iterations")
   
   # load iteration frequency results
   max_freqs <- readRDS(
@@ -146,7 +143,7 @@ if (ABS || DIFF) {
     relocate(region, .before = GCAM_region_ID) %>%
     arrange(GCAM_region_ID) %>%
     rename(ID = GCAM_region_ID)
-  
+
   # create table of iteration numbers of max frequency iterations for each case
   iter_table <- max_freqs %>%
     select(GCAM_region_ID, case, max_iter) %>%
@@ -173,14 +170,22 @@ if (ABS || DIFF) {
                                   "table_max_iterations_all_regions.RDS"))
   }
   
-  # create and save parameters corresponding to max frequency iterations for use in GCAM
-  
   # save iteration table
   write.csv(
     iter_table, 
     file.path(results_path, 
               paste0("iter_table_", hi_name, lo_name, "_Qtot.csv")), 
     row.names = FALSE)
+  
+  # --------------------------------------------------------------------------
+  # Get and save parameters corresponding to max frequency iterations
+  # --------------------------------------------------------------------------
+  
+  message("Getting parameters for max frequency iterations")
+  
+  # define column names for parameter cases
+  hi_col_name <- paste0(hi_name, "_Qtot")
+  lo_col_name <- paste0(lo_name, "_Qtot")
   
   # load parameter data
   param_data_global_clean_sub <- 
@@ -215,18 +220,26 @@ if (ABS || DIFF) {
     file.path(results_path, 
               paste0("params_FE_", hi_name, lo_name, "_Qtot.csv")), 
     row.names = FALSE)
+  
+  # --------------------------------------------------------------------------
+  # Save scenario projections for identified parameters
+  # --------------------------------------------------------------------------
+  
+  message("Saving projections for identified parameters")
+  
+  
 }
 
 #------------------------------------------------------------------------------
-# BOTH: identify parameters that are jointly extreme in ABS demand and DIFF response
+# BOTH: Build iteration table, export params, and save scenario projections
 #------------------------------------------------------------------------------
 
 if (BOTH) {
   
-  message("Running BOTH (ABS ∩ DIFF) parameter identification")
+  message("Identifying parameters for H/L outcomes for abs and diff in demand")
   
-  # ---- Run joint interval identification + frequency analysis ----
-  # NOTE: data_dir should be procdata_dir (same as ABS/DIFF), not input_dir
+  # calculate parameters by taking iteration that falls most frequently in high/low 
+  # intervals of BOTH absolute and difference in demand
   res_both <- make_BOTH_params_freq(
     year_vals      = year_iter,
     data_dir       = procdata_dir,
@@ -241,19 +254,16 @@ if (BOTH) {
     save_outputs   = TRUE
   )
   
-  message("Finished BOTH interval extraction + frequency analysis")
+  message("Finished identifying parameters")
   
   # --------------------------------------------------------------------------
-  # Create + save tables (parallel to ABS/DIFF branch)
+  # Create + save tables of frequencies and iteration numbers
   # --------------------------------------------------------------------------
+  
+  message("Creating summary tables of max frequencies and max iterations")
   
   # load iteration frequency results
   max_freqs <- readRDS(file.path(results_path, "max_iter_frequencies_BOTH.RDS"))
-  
-  # if your BOTH max_freqs ever contains non-Qtot cases, uncomment:
-  # max_freqs <- max_freqs %>% filter(str_detect(case, "_Qtot$"))
-  
-  message("Creating summary tables of max frequencies and max iterations (BOTH)")
   
   # table of frequencies of max-frequency iterations for each case
   max_freq_table <- max_freqs %>%
@@ -300,18 +310,16 @@ if (BOTH) {
   )
   
   # --------------------------------------------------------------------------
-  # Export parameters (global + FE), tagged by combined case
+  # Get and save parameters corresponding to max frequency iterations
   # --------------------------------------------------------------------------
   
-  message("Exporting global and FE parameter sets for BOTH cases")
+  message("Getting parameters for max frequency iterations")
   
-  # Ensure all expected BOTH case columns exist (if any missing, fill with NA)
-  for (cc in combo_names) {
-    if (!cc %in% names(iter_table)) iter_table[[cc]] <- NA_integer_
-  }
+  # create column names for parameter cases
+  combo_col_names <-   paste0(combo_names, "_Qtot")
   
   iters_needed <- iter_table %>%
-    select(all_of(combo_names)) %>%
+    select(all_of(combo_col_names)) %>%
     unlist(use.names = FALSE) %>%
     unique() %>%
     na.omit()
@@ -320,9 +328,9 @@ if (BOTH) {
   param_data_FE_clean_sub     <- readRDS(file.path(input_dir, "param_data_FE_clean_sub.RDS"))
   
   tag_tbl <- iter_table %>%
-    select(ID, all_of(combo_names)) %>%
+    select(ID, all_of(combo_col_names)) %>%
     pivot_longer(
-      cols      = all_of(combo_names),
+      cols      = all_of(combo_col_names),
       names_to  = "case",
       values_to = "iteration"
     ) %>%
@@ -352,11 +360,10 @@ if (BOTH) {
   )
   
   # --------------------------------------------------------------------------
-  # Save ABS and DIFF scenario projections for world iteration (ID == 33)
-  # Write ONLY inside BOTH results_path
+  # Save scenario projections for identified parameters
   # --------------------------------------------------------------------------
   
-  message("Saving world-iteration demand and demand-diffs projections for BOTH cases")
+  message("Saving demand and demand-diffs projections for identified parameters")
   
   iter_world <- iter_table %>% filter(ID == 33)
   if (nrow(iter_world) != 1) {
@@ -368,10 +375,14 @@ if (BOTH) {
   dir.create(scen_out_abs,  recursive = TRUE, showWarnings = FALSE)
   dir.create(scen_out_diff, recursive = TRUE, showWarnings = FALSE)
   
-  for (cc in combo_names) {
+  for (cc in combo_col_names) {
     
     it <- iter_world[[cc]][1]
-    if (is.na(it)) next
+    
+    if (is.na(it)) {
+      message("No iteration identified for case ", cc)
+      next
+    }
     
     # ABS demand levels (read from abs_dir, write to BOTH dir)
     scen_abs <- map_dfr(reg_list, function(r) {
@@ -381,7 +392,7 @@ if (BOTH) {
     
     saveRDS(
       scen_abs,
-      file.path(scen_out_abs, paste0("demand_allregions_", cc, "_Qtot.RDS"))
+      file.path(scen_out_abs, paste0("demand_allregions_", cc, ".RDS"))
     )
     
     # DIFF demand responses (read from diff_dir, write to BOTH dir)
@@ -392,11 +403,10 @@ if (BOTH) {
     
     saveRDS(
       scen_diff,
-      file.path(scen_out_diff, paste0("demand_diffs_allregions_", cc, "_Qtot.RDS"))
+      file.path(scen_out_diff, paste0("demand_diffs_allregions_", cc, ".RDS"))
     )
   }
   
-  message("Finished BOTH parameter identification and exports")
 }
 
 
@@ -408,9 +418,10 @@ if(FALSE) {
 
 # manually inspect this file to confirm that Qtot iterations are the best ones to 
 # use for HD, LD parameters
+max_freqs <- readRDS(file.path(results_path, "max_iter_frequencies_BOTH.RDS"))
 max_freq_table <- readRDS(file.path(results_path, "table_max_frequencies_all_regions.RDS"))
-# max_freq_table_jan25 <- 
-#   readRDS("H:/My Drive/R projects/food_demand/food_demand_uncertainty/data/processed/update9_cnstrlam_agg32FE_24jan25/Ref_ML_gcam/ens_bc_20251009_221027/table_max_frequencies_all_regions.RDS")
+max_freq_table_jan25 <-
+  readRDS("H:/My Drive/R projects/food_demand/food_demand_uncertainty/data/processed/update9_cnstrlam_agg32FE_24jan25/Ref_ML_gcam/ens_bc_20251009_221027/table_max_frequencies_all_regions.RDS")
 
 # identify iteration numbers that correspond to desired HD and LD parameter sets; 
 # region ID 33 represents iteration that does the best across all regions rather 
@@ -499,7 +510,7 @@ if(lo_name == "LPR") {
 
 # demand results
 iter_ML <- readRDS(
-  file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RDS")) %>%
+  file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")) %>%
   filter(measure == "ML") %>%
   pull(iteration)
 scen_results_path <- 
@@ -513,7 +524,7 @@ saveRDS(scen_results, file.path(scen_results_path,
 
 # demand difference results
 iter_ML <- readRDS(
-  file.path("data", "processed", procdata_dir, "params_ML_intervals_global.RDS")) %>%
+  file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")) %>%
   filter(measure == "ML") %>%
   pull(iteration)
 scen_results_path <- 

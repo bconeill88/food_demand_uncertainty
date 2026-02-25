@@ -34,8 +34,8 @@ make_HL_params_freq <- function(
   }
   
   # Load parameter files
-  param_file_global <- file.path("data", "processed", data_dir, "inputs", "param_data_global_clean_sub.RDS")
-  param_file_FE     <- file.path("data", "processed", data_dir, "inputs", "param_data_FE_clean_sub.RDS")
+  param_file_global <- file.path("data", "processed", data_dir, clean_data_dir, "param_data_global_clean_sub.RDS")
+  param_file_FE     <- file.path("data", "processed", data_dir, clean_data_dir, "param_data_FE_clean_sub.RDS")
   param_data_global_clean_sub <- readRDS(param_file_global)
   param_data_FE_clean_sub <- readRDS(param_file_FE)
   
@@ -112,21 +112,21 @@ make_BOTH_params_freq <- function(
   
   both_case <- "_BOTH"
   
-  message("Calculating BOTH (ABS ∩ DIFF) parameter sets")
+  message("Calculating HD/LD - HPR/LPR parameter sets")
   
   if (save_outputs) {
     dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
   }
   
   # load parameter files
-  param_file_global <- file.path("data", "processed", data_dir, "inputs", 
+  param_file_global <- file.path("data", "processed", data_dir, clean_data_dir, 
                                  "param_data_global_clean_sub.RDS")
-  param_file_FE     <- file.path("data", "processed", data_dir, "inputs", 
+  param_file_FE     <- file.path("data", "processed", data_dir, clean_data_dir, 
                                  "param_data_FE_clean_sub.RDS")
   param_data_global_clean_sub <- readRDS(param_file_global)
   param_data_FE_clean_sub     <- readRDS(param_file_FE)
   
-  message("  Extracting joint (ABS ∩ DIFF) intervals for all regions and years")
+  message("  Extracting outcomes in intervals for all regions and years")
   
   demand_intervals_both <- get_demand_intervals_both(
     year_vals      = year_vals,
@@ -145,7 +145,7 @@ make_BOTH_params_freq <- function(
             file.path(out_dir, paste0("demand_intervals", both_case, ".RDS")))
   }
   
-  message("  Computing maximum-frequency iterations for BOTH cases")
+  message("  Computing maximum-frequency iterations in intervals")
   
   max_iter_frequencies <- compute_max_iteration_frequencies_both(demand_intervals_both)
   
