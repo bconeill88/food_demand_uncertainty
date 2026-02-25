@@ -1,9 +1,10 @@
 
 # Directories and file names for Raw MCMC and observational data ---------------
 
-# subdirectories of "data/raw/" where MCMC parameter results can be found
-#rawdata_dir <- "update9_cnstrlam_agg32FE_24jan25"
-rawdata_dir <- "unweighted"
+# subdirectories of "data/raw/" where MCMC parameter results and observational
+# data can be found
+mcmc_dir <- "mcmc_params"
+obs_dir <- "obs_data"
 
 # names of raw MCMC parameter results files to use
 # param_data_global_file <- "ambrosia_9_params_24Jan25.dat"
@@ -13,32 +14,68 @@ rawdata_dir <- "unweighted"
 param_data_global_file <- "ambrosia_9_params_23Nov2025.dat"
 param_data_FE_file <- "FE_params_23Nov25.dat"
 
-# name of observational data file to use
+# name of raw observational data file to use
 obs_data_file <- "Processed_group_data_13Jan25.csv"
 
-# Directories for GCAM raw output ------------------------------------------------
+# Directories, file names, and region mapping for GCAM raw output --------------
 
 # define sub-directories of data/raw where GCAM output can be found
 gcam_rawdata_dir <- "final_rgcam_outputs"
-gcam_rawdata_subdir <- "tables_1dec25"
+gcam_rawdata_subdir <- "tables_22feb26"
+# gcam_rawdata_subdir <- "tables_1dec25" # previous version, with by2015
+income_dist_baseyr_file <- "income_dist_by2021.csv"
+GCAM_region_ID_mapping <- readRDS(file.path("data", "raw", "GCAM_region_ID_mapping.RDS"))
 
 # Directories for analysis results ---------------------------------------------
 
 # subdirectory of "data/processed/" to use for data analysis results
 procdata_dir <- "mcmc_23nov25"
 
-# subdirectory of "procdata_dir" to extract results from
-procdata_subdir_RefMLgcam <- "Ref_ML_gcam/ens_bc_combined_20251203_070624"
-procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/ens_bc_combined_20251211_024942"
-demand_diffs_subdir <- "diffs_Ref_ML_HP_gcam"
+# subdirectory of "procdata_dir" for processed gcam results
+# gcam_results_dir <- "results_gcam_by2015"
+gcam_results_dir <- "results_gcam_by2021"
 
-# subdirectory of "data/processed/" to use for processed gcam results
-gcam_results_dir <- "results_gcam"
+# subdirectory of "procdata_dir" for MCMC parameter uncertainty intervals
+# (ML parameters and intervals of parameter uncertainty, not demand uncertainty)
+param_intervals_dir <- "param_intervals"
+
+# subdirectory of "procdata_dir" for cleaned MCMC parameter ensembles and
+# observational data
+clean_data_dir <- "clean_data"
+
+# subdirectory of "procdata_dir" to extract results from
+# for base year 2021
+procdata_subdir_RefMLgcam <- "Ref_ML_gcam/by2021/ens_bc_combined_20260216_030130"
+procdata_subdir_RefMLgcam_price <- 
+  "Ref_ML_gcam/by2021/ens_bc_combined_MLprice_20260218_121355"
+procdata_subdir_RefMLgcam_income <- 
+  "Ref_ML_gcam/by2021/ens_bc_combined_MLincome_20260218_122105"
+procdata_subdir_RefMLgcam_scale <- 
+  "Ref_ML_gcam/by2021/ens_bc_combined_MLscale_20260218_122355"
+procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/by2021/ens_bc_combined_20260216_113450"
+procdata_subdir_RefMLHPgcam_price <- 
+  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLprice_20260218_123119"
+procdata_subdir_RefMLHPgcam_income <- 
+  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLincome_20260218_123338"
+procdata_subdir_RefMLHPgcam_scale <- 
+  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLscale_20260218_123621"
+
+# for base year 2015
+# procdata_subdir_RefMLgcam <- "Ref_ML_gcam/by2015/ens_bc_combined_20251203_070624"
+# procdata_subdir_RefMLgcam_price <- "Ref_ML_gcam/by2015/ens_bc_combined_MLprice_20260119_175954"
+# procdata_subdir_RefMLgcam_income <- "Ref_ML_gcam/by2015/ens_bc_combined_MLincome_20260119_173305"
+# procdata_subdir_RefMLgcam_scale <- "Ref_ML_gcam/by2015/ens_bc_combined_MLscale_20260119_173644"
+# procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/by2015/ens_bc_combined_20251211_024942"
+
+# sub-subdirectories for specific types of results
+demand_abs_subdir <- "abs"
+demand_diffs_subdir <- "diffs_Ref_ML_HP_gcam"
+demand_both_subdir <- "both"
 
 # Create directories that don't exist yet --------------------------------------
 
 directories_to_check <- c(
-  file.path("data", "processed", procdata_dir, "inputs"),
+  file.path("data", "processed", procdata_dir, clean_data_dir),
   file.path("data", "processed", procdata_dir, gcam_results_dir)
 )
 lapply(directories_to_check, function(dir_path) {
@@ -77,15 +114,21 @@ confinterval <- 90
 
 # Parameters for demand calculations -------------------------------------------
 
+# base year for GCAM-derived input assumptions to ambrosia
+base_year <- 2021
+
 # minimum food demand thresholds for demand function; not currently used (hard wired
 # in ambrosia) but retained for possible future use
-Qs_floor <- NULL
-Qn_floor <- NULL
+Qs_floor <- 0.6
+Qn_floor <- 0
 
 # Parameters for demand-based uncertainty intervals ----------------------------
 
 # years to use for identifying iterations in 07_parameters_for_intervals.R
-year_iter <- c(seq(2020,2100, by=5))
+# start with first year divisible by five that is greater than base year
+seq_start <- base_year + (5 - base_year %% 5)
+year_iter <- c(seq(seq_start,2100, by=5))
+
 # quantile intervals for defining high and low demand
 hi_min <- 95
 hi_max <- 100
@@ -105,8 +148,10 @@ scen_list_demand_GCAM_ML <-
   # list("Ref_ML_gcam_MLparams_bc")
   # list("Ref_ML_gcam_ens_bc")
   # list("Ref_ML_HP_gcam_ens_bc")
+  # list("Ref_ML_gcam_ens_bc", "Ref_ML_HP_gcam_ens_bc")
   # list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
   list("Ref_ML_gcam_MLprice_ens_bc", "Ref_ML_gcam_MLincome_ens_bc", "Ref_ML_gcam_MLscale_ens_bc")
+  # list("Ref_ML_HP_gcam_MLprice_ens_bc", "Ref_ML_HP_gcam_MLincome_ens_bc", "Ref_ML_HP_gcam_MLscale_ens_bc")
 
 # scenarios to run in 08_calculate_demand_GCAM_HDLD.R
 scen_list_demand_GCAM_HDLD <-
