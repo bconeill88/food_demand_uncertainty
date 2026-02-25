@@ -17,9 +17,6 @@ get_GCAM_results <- function(proj_data, inc_shares, scen, data_dir, gcam_dir) {
   # account for differences in rgcam output file structures
   if(length(proj_data) == 1) proj_data <- proj_data[[1]]
   
-  # get region mapping file to add region # to results
-  load("data/raw/GCAM_region_ID_mapping.Rdata")
-  
   # get data
   prices <- proj_data[['food demand prices']] %>%
     select(-c(nodeinput, Units, scenario)) %>%
