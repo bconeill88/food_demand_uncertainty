@@ -16,8 +16,8 @@ generate_report_names <- function() {
   quantities   <- c("demand", "price", "elasticity")
   aggregations <- c("regional", "decile", "regional_decile")
   qty_types    <- c("abs", "diff")
-  plot_types   <- c("std", "decomp", "bar")          # std removed from name below
-  plot_styles  <- c("std", "plain", "plain_compare") # std removed from name below
+  plot_types   <- c("std", "decomp", "bar", "scatter")      # std removed from name below
+  plot_styles  <- c("std", "plain", "plain_compare")        # std removed from name below
   
   # scenarios conditional on qty_type
   scenarios_for_type <- function(qty_type) {
@@ -2448,4 +2448,445 @@ plot_regional_uncertainty_decomposition <- function(
     scale_fill_manual(name = "Ensemble", values = band_styles$fill_values) +
     facet_wrap(~ demand_type, scales = "free_y") +
     theme_minimal(base_size = 13)
+}
+
+
+# =============================================================================
+# Scenario scatter plots: GCAM vs ambrosia
+# =============================================================================
+
+# Helper: build paired scatter data for one GCAM / ambrosia scenario pair
+build_scatter_pair_data <- function(
+    gcam_df,
+    amb_df,
+    reg_num,
+    scenario_name,
+    value_cols,
+    value_names,
+    consumer_group = NULL,
+    keep_all_consumers = FALSE,
+    consumer_col = "gcam-consumer",
+    region_col = "GCAM_region_ID",
+    year_col = "year"
+) {
+  
+  if (is.null(gcam_df) || is.null(amb_df) || is.null(scenario_name)) {
+    return(NULL)
+  }
+  
+  stopifnot(length(value_cols) == 2, length(value_names) == 2)
+  
+  reg_num_int <- as.integer(reg_num)
+  
+  filter_one <- function(df) {
+    
+    out <- df %>%
+      mutate(
+        !!region_col := as.integer(.data[[region_col]])
+      ) %>%
+      filter(.data[[region_col]] == reg_num_int)
+    
+    if (!is.null(consumer_group) && consumer_col %in% names(out)) {
+      out <- out %>%
+        filter(.data[[consumer_col]] == consumer_group)
+    }
+    
+    out
+  }
+  
+  gcam_sub <- filter_one(gcam_df)
+  amb_sub  <- filter_one(amb_df)
+  
+  if (nrow(gcam_sub) == 0 || nrow(amb_sub) == 0) {
+    return(NULL)
+  }
+  
+  join_keys <- c(region_col, year_col)
+  if (consumer_col %in% names(gcam_sub) && consumer_col %in% names(amb_sub)) {
+    join_keys <- c(join_keys, consumer_col)
+  }
+  
+  gcam_sub <- gcam_sub %>%
+    select(all_of(c(join_keys, value_cols))) %>%
+    pivot_longer(
+      cols = all_of(value_cols),
+      names_to = "demand_type",
+      values_to = "x_value"
+    )
+  
+  amb_sub <- amb_sub %>%
+    select(all_of(c(join_keys, value_cols))) %>%
+    pivot_longer(
+      cols = all_of(value_cols),
+      names_to = "demand_type",
+      values_to = "y_value"
+    )
+  
+  out <- gcam_sub %>%
+    inner_join(
+      amb_sub,
+      by = c(join_keys, "demand_type")
+    ) %>%
+    mutate(
+      GCAM_region_ID = reg_num_int,
+      demand_type = factor(
+        as.character(demand_type),
+        levels = value_cols,
+        labels = value_names
+      ),
+      scenario_name = scenario_name
+    )
+  
+  # Preserve decile identity only when requested
+  if (keep_all_consumers && consumer_col %in% names(out)) {
+    out <- out %>%
+      mutate(consumer_group = .data[[consumer_col]])
+  } else if (!is.null(consumer_group)) {
+    out <- out %>%
+      mutate(consumer_group = consumer_group)
+  } else {
+    out <- out %>%
+      mutate(consumer_group = NA_character_)
+  }
+  
+  out
+}
+
+# Single-region scatter builder
+plot_scenario_scatter <- function(
+    reg_num,
+    value_cols,
+    value_names,
+    consumer_group = NULL,
+    keep_all_consumers = FALSE,
+    
+    # set1 (GCAM)
+    scen_solid_1         = NULL, scen_solid_name_1         = NULL,
+    scen_dashed_dark_1   = NULL, scen_dashed_dark_name_1   = NULL,
+    scen_dashed_light_1  = NULL, scen_dashed_light_name_1  = NULL,
+    scen_dotted_dark_1   = NULL, scen_dotted_dark_name_1   = NULL,
+    scen_dotted_light_1  = NULL, scen_dotted_light_name_1  = NULL,
+    
+    # set2 (ambrosia)
+    scen_solid_2         = NULL, scen_solid_name_2         = NULL,
+    scen_dashed_dark_2   = NULL, scen_dashed_dark_name_2   = NULL,
+    scen_dashed_light_2  = NULL, scen_dashed_light_name_2  = NULL,
+    scen_dotted_dark_2   = NULL, scen_dotted_dark_name_2   = NULL,
+    scen_dotted_light_2  = NULL, scen_dotted_light_name_2  = NULL,
+    
+    consumer_col = "gcam-consumer",
+    region_col = "GCAM_region_ID",
+    year_col = "year",
+    return_data = FALSE,
+    x_label = "GCAM",
+    y_label = "ambrosia"
+) {
+  
+  stopifnot(length(value_cols) == 2, length(value_names) == 2)
+  
+  pair_data <- bind_rows(
+    build_scatter_pair_data(
+      gcam_df = scen_solid_1,
+      amb_df = scen_solid_2,
+      reg_num = reg_num,
+      scenario_name = coalesce(scen_solid_name_1, scen_solid_name_2, "Scenario"),
+      value_cols = value_cols,
+      value_names = value_names,
+      consumer_group = consumer_group,
+      keep_all_consumers = keep_all_consumers,
+      consumer_col = consumer_col,
+      region_col = region_col,
+      year_col = year_col
+    ),
+    build_scatter_pair_data(
+      gcam_df = scen_dashed_dark_1,
+      amb_df = scen_dashed_dark_2,
+      reg_num = reg_num,
+      scenario_name = coalesce(scen_dashed_dark_name_1, scen_dashed_dark_name_2, "Scenario"),
+      value_cols = value_cols,
+      value_names = value_names,
+      consumer_group = consumer_group,
+      keep_all_consumers = keep_all_consumers,
+      consumer_col = consumer_col,
+      region_col = region_col,
+      year_col = year_col
+    ),
+    build_scatter_pair_data(
+      gcam_df = scen_dashed_light_1,
+      amb_df = scen_dashed_light_2,
+      reg_num = reg_num,
+      scenario_name = coalesce(scen_dashed_light_name_1, scen_dashed_light_name_2, "Scenario"),
+      value_cols = value_cols,
+      value_names = value_names,
+      consumer_group = consumer_group,
+      keep_all_consumers = keep_all_consumers,
+      consumer_col = consumer_col,
+      region_col = region_col,
+      year_col = year_col
+    ),
+    build_scatter_pair_data(
+      gcam_df = scen_dotted_dark_1,
+      amb_df = scen_dotted_dark_2,
+      reg_num = reg_num,
+      scenario_name = coalesce(scen_dotted_dark_name_1, scen_dotted_dark_name_2, "Scenario"),
+      value_cols = value_cols,
+      value_names = value_names,
+      consumer_group = consumer_group,
+      keep_all_consumers = keep_all_consumers,
+      consumer_col = consumer_col,
+      region_col = region_col,
+      year_col = year_col
+    ),
+    build_scatter_pair_data(
+      gcam_df = scen_dotted_light_1,
+      amb_df = scen_dotted_light_2,
+      reg_num = reg_num,
+      scenario_name = coalesce(scen_dotted_light_name_1, scen_dotted_light_name_2, "Scenario"),
+      value_cols = value_cols,
+      value_names = value_names,
+      consumer_group = consumer_group,
+      keep_all_consumers = keep_all_consumers,
+      consumer_col = consumer_col,
+      region_col = region_col,
+      year_col = year_col
+    )
+  )
+  
+  if (nrow(pair_data) == 0) {
+    out_empty <- tibble(
+      GCAM_region_ID = integer(),
+      year = integer(),
+      demand_type = factor(character(), levels = value_names),
+      x_value = numeric(),
+      y_value = numeric(),
+      scenario_name = character(),
+      consumer_group = character()
+    )
+    if (return_data) return(out_empty)
+    return(ggplot() + theme_void())
+  }
+  
+  if (return_data) {
+    return(pair_data)
+  }
+  
+  has_deciles <- "consumer_group" %in% names(pair_data) &&
+    any(!is.na(pair_data$consumer_group)) &&
+    dplyr::n_distinct(pair_data$consumer_group[!is.na(pair_data$consumer_group)]) > 1
+  
+  # Nice symmetric limits for 1:1 comparison
+  lims <- range(c(pair_data$x_value, pair_data$y_value), na.rm = TRUE)
+  
+  gg <- ggplot(
+    pair_data,
+    aes(x = x_value, y = y_value, color = scenario_name)
+  ) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
+    facet_wrap(~ demand_type, ncol = 2, scales = "free") +
+    labs(
+      x = x_label,
+      y = y_label,
+      color = "Scenario",
+      shape = "Consumer group"
+    ) +
+    theme_minimal(base_size = 12) +
+    coord_equal(xlim = lims, ylim = lims)
+  
+  if (has_deciles) {
+    gg <- gg +
+      geom_point(aes(shape = consumer_group), alpha = 0.6, size = 1.0)
+  } else {
+    gg <- gg +
+      geom_point(alpha = 0.6, size = 1.0)
+  }
+  
+  gg
+}
+
+# Multi-region scatter PDF from accumulated p_all
+plot_scenario_scatter_pdf <- function(
+    p_all,
+    region_mapping,
+    output_dir,
+    filename = "scatter_all_regions.pdf",
+    x_label = "GCAM",
+    y_label = "ambrosia",
+    value_names = c("Staples", "Non-staples")
+) {
+  
+  stopifnot(length(value_names) == 2)
+  
+  if (nrow(p_all) == 0) {
+    stop("plot_scenario_scatter_pdf(): p_all has zero rows.")
+  }
+  
+  p_all <- p_all %>%
+    mutate(GCAM_region_ID = as.character(GCAM_region_ID)) %>%
+    left_join(
+      region_mapping %>% mutate(GCAM_region_ID = as.character(GCAM_region_ID)),
+      by = "GCAM_region_ID"
+    ) %>%
+    mutate(
+      demand_type = factor(as.character(demand_type), levels = value_names)
+    ) %>%
+    select(-any_of("region"))
+  
+  # Drop rows that cannot be plotted
+  p_all <- p_all %>%
+    filter(
+      !is.na(scenario_name),
+      !is.na(demand_type),
+      is.finite(x_value),
+      is.finite(y_value)
+    )
+  
+  if (nrow(p_all) == 0) {
+    stop("plot_scenario_scatter_pdf(): no finite plotting rows remain after filtering.")
+  }
+  
+  has_deciles <- "consumer_group" %in% names(p_all) &&
+    any(!is.na(p_all$consumer_group)) &&
+    dplyr::n_distinct(p_all$consumer_group[!is.na(p_all$consumer_group)]) > 1
+  
+  lims <- range(c(p_all$x_value, p_all$y_value), na.rm = TRUE)
+  
+  base <- ggplot(
+    p_all,
+    aes(x = x_value, y = y_value)
+  ) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
+    labs(
+      x = x_label,
+      y = y_label
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      strip.text = element_text(size = 10),
+      legend.position = "bottom",
+      legend.box = "vertical"
+    ) +
+    coord_equal(xlim = lims, ylim = lims)
+  
+  if (has_deciles) {
+    base <- base +
+      geom_point(aes(shape = consumer_group), alpha = 0.55, size = 0.8) +
+      labs(shape = "Consumer group")
+  } else {
+    base <- base +
+      geom_point(alpha = 0.55, size = 0.8)
+  }
+  
+  p <- base +
+    facet_grid(
+      rows = vars(scenario_name),
+      cols = vars(demand_type),
+      scales = "fixed",
+      drop = FALSE
+    )
+  
+  # Allow interactive testing without writing a PDF
+  if (is.null(filename)) {
+    return(p)
+  }
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  pdf(file.path(output_dir, filename), width = 8.5, height = 11)
+  on.exit(dev.off(), add = TRUE)
+  
+  print(p)
+  
+  invisible(p)
+}
+
+plot_scenario_scatter_decile_pdf <- function(
+    p_all,
+    region_mapping,
+    output_dir,
+    filename = "scatter_decile_all_regions.pdf",
+    x_label = "GCAM",
+    y_label = "ambrosia",
+    value_names = c("Staples", "Non-staples")
+) {
+  
+  stopifnot(length(value_names) == 2)
+  
+  if (nrow(p_all) == 0) {
+    stop("plot_scenario_scatter_decile_pdf(): p_all has zero rows.")
+  }
+  
+  p_all <- p_all %>%
+    mutate(GCAM_region_ID = as.character(GCAM_region_ID)) %>%
+    left_join(
+      region_mapping %>% mutate(GCAM_region_ID = as.character(GCAM_region_ID)),
+      by = "GCAM_region_ID"
+    ) %>%
+    mutate(
+      demand_type = factor(as.character(demand_type), levels = value_names),
+      consumer_group = case_when(
+        consumer_group == "FoodDemand_Group1"  ~ "Decile 1",
+        consumer_group == "FoodDemand_Group2"  ~ "Decile 2",
+        consumer_group == "FoodDemand_Group3"  ~ "Decile 3",
+        consumer_group == "FoodDemand_Group6"  ~ "Decile 6",
+        consumer_group == "FoodDemand_Group10" ~ "Decile 10",
+        TRUE ~ as.character(consumer_group)
+      ),
+      consumer_group = factor(
+        consumer_group,
+        levels = c("Decile 1", "Decile 2", "Decile 3", "Decile 6", "Decile 10")
+      )
+    ) %>%
+    filter(
+      !is.na(scenario_name),
+      !is.na(demand_type),
+      !is.na(consumer_group),
+      is.finite(x_value),
+      is.finite(y_value)
+    ) %>%
+    select(-any_of("region"))
+  
+  lims <- range(c(p_all$x_value, p_all$y_value), na.rm = TRUE)
+  
+  p <- ggplot(
+    p_all,
+    aes(x = x_value, y = y_value, color = consumer_group)
+  ) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
+    geom_point(alpha = 0.55, size = 0.8) +
+    facet_grid(
+      rows = vars(scenario_name),
+      cols = vars(demand_type),
+      scales = "fixed",
+      drop = FALSE
+    ) +
+    scale_color_viridis_d(
+      option = "viridis",
+      begin = 0.10,
+      end = 0.80,
+      direction = 1,
+      name = "Consumer group"
+    ) +
+    labs(
+      x = x_label,
+      y = y_label
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      strip.text = element_text(size = 10),
+      legend.position = "bottom"
+    ) +
+    coord_equal(xlim = lims, ylim = lims)
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = p,
+    width = 8.5,
+    height = 11,
+    units = "in",
+    device = cairo_pdf
+  )
+  
+  invisible(p)
 }

@@ -15,16 +15,17 @@ ensure_package(patchwork)
 
 # Indicate whether to create regional or decile demand plots over time, bar plots
 # in a given target year
-DEMAND_REG <- TRUE
-DEMAND_DEC <- TRUE
-DEMAND_REG_DEC <- TRUE
-BAR <- TRUE
+DEMAND_REG <- FALSE
+DEMAND_DEC <- FALSE
+DEMAND_REG_DEC <- FALSE
+ELAST <- FALSE
+PRICE <- FALSE # and income
+LAND_WATER <- FALSE
+BAR <- FALSE
+SCATTER <- TRUE
 target_year1 = 2050
 target_year2 = 2100
-ELAST <- TRUE
-PRICE <- TRUE # and income
-DECOMP <- TRUE
-LAND_WATER <- TRUE
+DECOMP <- FALSE
 
 # Indicate whether to create absolute or difference plots
 ABS_ML <- TRUE
@@ -348,6 +349,122 @@ for(region_id in region_list) {
       # Accumulate results
       p_all$demand_regional_decile_abs_HP <- 
         bind_rows( p_all$demand_regional_decile_abs_HP, p_reg_dec)
+    }
+    
+    if(SCATTER) {
+      
+      message(" Creating scatter plots")
+      
+      # Regional demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs.region", "Qn.region"),
+        value_names = c("Staples", "Non-staples"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["HP_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$demand_regional_abs_scatter_HP <-
+        bind_rows(p_all$demand_regional_abs_scatter_HP, p_sc)
+      
+      # Decile demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs", "Qn"),
+        value_names = c("Staples", "Non-staples"),
+        keep_all_consumers = TRUE,
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["HP_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      )
+      
+      p_all$demand_decile_abs_scatter_HP <-
+        bind_rows(p_all$demand_decile_abs_scatter_HP, p_sc)
+      
+      # Prices
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Ps", "Pn"),
+        value_names = c("Staples price", "Non-staples price"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["HP_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$price_regional_abs_scatter_HP <-
+        bind_rows(p_all$price_regional_abs_scatter_HP, p_sc)
     }
   }
   
@@ -854,6 +971,121 @@ for(region_id in region_list) {
           bind_rows(p_all$landwater2_regional_abs_ML, p_reg)
     }
         
+    if(SCATTER) {
+      
+      message(" Creating scatter plots")
+      
+      # Regional demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs.region", "Qn.region"),
+        value_names = c("Staples", "Non-staples"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["Ref_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["Ref_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["Ref_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["Ref_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["Ref_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$demand_regional_abs_scatter_ML <-
+        bind_rows(p_all$demand_regional_abs_scatter_ML, p_sc)
+      
+      # Decile demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs", "Qn"),
+        value_names = c("Staples", "Non-staples"),
+        keep_all_consumers = TRUE,
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["Ref_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["Ref_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["Ref_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["Ref_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["Ref_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      )
+      
+      p_all$demand_decile_abs_scatter_ML <-
+        bind_rows(p_all$demand_decile_abs_scatter_ML, p_sc)
+      
+      # Price
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Ps", "Pn"),
+        value_names = c("Staples price", "Non-staples price"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput[["Ref_ML"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput[["Ref_HD_HPR"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput[["Ref_HD_LPR"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput[["Ref_LD_HPR"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput[["Ref_LD_LPR"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$price_regional_abs_scatter_ML <-
+        bind_rows(p_all$price_regional_abs_scatter_ML, p_sc)
+    }
   }
   
   # ----------------------------------------------------------------------------
@@ -861,6 +1093,8 @@ for(region_id in region_list) {
   # ----------------------------------------------------------------------------
   
   if(DIFF) {
+    
+    message("DIFF plots")
     
     # Load regional ensemble data
     reg_ens_bc_ML <- readRDS(
@@ -1247,6 +1481,122 @@ for(region_id in region_list) {
       
     }
     
+    if(SCATTER) {
+      
+      message(" Creating scatter plots")
+      
+      # Regional demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs.region", "Qn.region"),
+        value_names = c("Staples", "Non-staples"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput_diffs[["Ref_ML_HP"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput_diffs[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput_diffs[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput_diffs[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput_diffs[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput_diffs[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$demand_regional_diff_scatter_MLHP <-
+        bind_rows(p_all$demand_regional_diff_scatter_MLHP, p_sc)
+      
+      # Decile demand
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Qs", "Qn"),
+        value_names = c("Staples", "Non-staples"),
+        keep_all_consumers = TRUE,
+        
+        # GCAM
+        scen_solid_1 = gcamoutput_diffs[["Ref_ML_HP"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput_diffs[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput_diffs[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput_diffs[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput_diffs[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput_diffs[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      )
+      
+      p_all$demand_decile_diff_scatter_MLHP <-
+        bind_rows(p_all$demand_decile_diff_scatter_MLHP, p_sc)
+      
+      # Price
+      p_sc <- plot_scenario_scatter(
+        reg_num = region_id,
+        value_cols = c("Ps", "Pn"),
+        value_names = c("Staples price", "Non-staples price"),
+        
+        # GCAM
+        scen_solid_1 = gcamoutput_diffs[["Ref_ML_HP"]],
+        scen_solid_name_1 = "ML",
+        scen_dashed_dark_1 = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
+        scen_dashed_dark_name_1 = "HD-HPR",
+        scen_dashed_light_1 = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
+        scen_dashed_light_name_1 = "HD-LPR",
+        scen_dotted_dark_1 = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
+        scen_dotted_dark_name_1 = "LD-HPR",
+        scen_dotted_light_1 = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
+        scen_dotted_light_name_1 = "LD-LPR",
+        
+        # ambrosia
+        scen_solid_2 = amboutput_diffs[["Ref_ML_MLparams"]],
+        scen_solid_name_2 = "ML",
+        scen_dashed_dark_2 = amboutput_diffs[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2 = "HD-HPR",
+        scen_dashed_light_2 = amboutput_diffs[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2 = "HD-LPR",
+        scen_dotted_dark_2 = amboutput_diffs[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2 = "LD-HPR",
+        scen_dotted_light_2 = amboutput_diffs[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2 = "LD-LPR",
+        
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      p_all$price_regional_diff_scatter_MLHP <-
+        bind_rows(p_all$price_regional_diff_scatter_MLHP, p_sc)
+      
+    }
   }
 }
 
@@ -1307,6 +1657,35 @@ if(ABS_HP) {
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
       filename = rpt_names[["rpt_name_demand_regional_decile_abs_HP"]]
+    )
+  }
+  
+  if(SCATTER) {
+    
+    message("Creating demand scatter pdf")
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["demand_regional_abs_scatter_HP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_abs_scatter_HP"]]
+    )
+    
+    plot_scenario_scatter_decile_pdf(
+      p_all = p_all[["demand_decile_abs_scatter_HP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_abs_scatter_HP"]]
+    )
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["price_regional_abs_scatter_HP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_abs_scatter_HP"]],
+      x_label = "GCAM price",
+      y_label = "ambrosia price",
+      value_names = c("Staples price", "Non-staples price")
     )
   }
 }
@@ -1522,9 +1901,41 @@ if(ABS_ML) {
       y_label = "Value"
     )
   }
+  
+  if(SCATTER) {
+    
+    message("Creating demand scatter pdf")
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["demand_regional_abs_scatter_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_abs_scatter_ML"]]
+    )
+    
+    plot_scenario_scatter_decile_pdf(
+      p_all = p_all[["demand_decile_abs_scatter_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_abs_scatter_ML"]]
+    )
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["price_regional_abs_scatter_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_abs_scatter_ML"]],
+      x_label = "GCAM price",
+      y_label = "ambrosia price",
+      value_names = c("Staples price", "Non-staples price")
+    )
+  }
+  
 }
 
 if(DIFF) {
+  
+  message("DIFF pdfs")
   
   if(DEMAND_REG) {
     
@@ -1698,4 +2109,33 @@ if(DIFF) {
       y_label = "Demand difference rel. to ML (10^3 cal/day)"
     )
   }
+  
+  if(SCATTER) {
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["demand_regional_diff_scatter_MLHP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_diff_scatter_MLHP"]]
+    )
+    
+    plot_scenario_scatter_decile_pdf(
+      p_all = p_all[["demand_decile_diff_scatter_MLHP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_diff_scatter_MLHP"]]
+    )
+    
+    plot_scenario_scatter_pdf(
+      p_all = p_all[["price_regional_diff_scatter_MLHP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_diff_scatter_MLHP"]],
+      x_label = "GCAM price difference",
+      y_label = "ambrosia price difference",
+      value_names = c("Staples price", "Non-staples price")
+    )
+
+  }
+  
 }
