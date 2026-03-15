@@ -15,85 +15,39 @@ ensure_package(patchwork)
 
 # Indicate whether to create regional or decile demand plots over time, bar plots
 # in a given target year
-DEMAND_REG <- FALSE
-DEMAND_DEC <- FALSE
+DEMAND_REG <- TRUE
+DEMAND_DEC <- TRUE
 DEMAND_REG_DEC <- TRUE
-BAR <- FALSE
-target_year = 2050
-ELAST <- FALSE
-PRICE <- FALSE  # and income
-DECOMP <- FALSE
+BAR <- TRUE
+target_year1 = 2050
+target_year2 = 2100
+ELAST <- TRUE
+PRICE <- TRUE # and income
+DECOMP <- TRUE
+LAND_WATER <- TRUE
 
 # Indicate whether to create absolute or difference plots
-ABS <- TRUE
+ABS_ML <- TRUE
+ABS_HP <- TRUE
 DIFF <- TRUE
 
-# Define directories and file names
+# Define paths for regional ensemble results
+reg_ens_path <- generate_ens_path_names()
 
-# Directories containing regional ensemble results
-reg_results_path_abs <- 
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam, 
-            demand_abs_subdir)
-reg_results_path_diff <- 
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam, 
-            demand_diffs_subdir)
-reg_results_path_price_abs <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_price,
-            demand_abs_subdir)
-reg_results_path_price_diff <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_price,
-            demand_diffs_subdir)
-reg_results_path_income_abs <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_income,
-            demand_abs_subdir)
-reg_results_path_income_diff <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_income,
-            demand_diffs_subdir)
-reg_results_path_scale_abs <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_scale,
-            demand_abs_subdir)
-reg_results_path_scale_diff <-
-  file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam_scale,
-            demand_diffs_subdir)
+# Define file name extensions for ensemble results files
+scen_case_abs <- "_ens_bc"
+scen_case_diff <- "_diffs_ens_bc"
 
 # Directory for report result
 output_dir <- file.path("output", "reports", procdata_dir, procdata_subdir_RefMLgcam)
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Report file names; "_plain" indicates only range, CI, and ambrosia ML scenario 
-# are included, otherwise additional ambrosia and GCAM scenarios are included.
-report_name_regional_abs <- "demand_regional_ens_bc_ML.pdf"
-report_name_regional_abs_plain <- "demand_regional_ens_bc_ML_plain.pdf"
-report_name_regional_abs_plain_compare <- "demand_regional_ens_bc_ML_plain_compare.pdf"
-report_name_regional_abs_bar <- "demand_regional_bar_ens_bc_ML.pdf"
-report_name_regional_elast_abs <- "elasticities_regional_ens_bc_ML.pdf"
-report_name_regional_elast_abs_plain <- "elasticities_regional_ens_bc_ML_plain.pdf"
-report_name_regional_price_abs_plain_compare <- "prices_regional_ens_bc_ML_plain_compare.pdf"
-report_name_regional_diff <- "demand_diffs_regional_ens_bc.pdf"
-report_name_regional_diff_plain <- "demand_diffs_regional_ens_bc_plain.pdf"
-report_name_regional_diff_plain_compare <- "demand_diffs_regional_ens_bc_plain_compare.pdf"
-report_name_regional_diff_bar <- "demand_diffs_regional_bar_ens_bc.pdf"
-report_name_regional_elast_diff <- "elasticities_diffs_regional_ens_bc.pdf"
-report_name_regional_elast_diff_plain <- "elasticities_diffs_regional_ens_bc_plain.pdf"
-report_name_regional_price_diff_plain_compare <- "prices_diffs_regional_ens_bc_ML_plain_compare.pdf"
-report_name_decile_abs <- "demand_decile_ens_bc_ML.pdf"
-report_name_decile_abs_plain <- "demand_decile_ens_bc_ML_plain.pdf"
-report_name_decile_abs_plain_compare <- "demand_decile_ens_bc_ML_plain_compare.pdf"
-report_name_decile_price_abs_plain_compare <- "prices_decile_ens_bc_plain_compare.pdf"
-report_name_decile_diff <- "demand_diffs_decile_ens_bc.pdf"
-report_name_decile_diff_plain <- "demand_diffs_decile_ens_bc_plain.pdf"
-report_name_decile_price_diff_plain_compare <- "prices_diffs_decile_ens_bc_plain_compare.pdf"
-report_name_regional_decile_abs <- "demand_regional_decile_ens_bc_ML.pdf"
-report_name_regional_decile_abs_plain <- "demand_regional_decile_ens_bc_ML_plain.pdf"
-report_name_regional_decile_abs_plain_compare <- "demand_regional_decile_ens_bc_ML_plain_compare.pdf"
-report_name_regional_decile_diff <- "demand_diffs_regional_decile_ens_bc.pdf"
-report_name_regional_decile_diff_plain <- "demand_diffs_regional_decile_ens_bc_plain.pdf"
-report_name_regional_decomp_abs <- "demand_decomp_ens_bc_ML.pdf"
-report_name_regional_decomp_diff <- "demand_diffs_decomp_ens_bc.pdf"
-
-# Scenario case to use in file names
-scen_case_abs <- "_ens_bc"
-scen_case_diff <- "_diffs_ens_bc"
+# Define report file names
+rpt_names <- generate_report_names()
+# ad hoc addition
+rpt_names["rpt_name_landwater1_regional_abs_ML"] <- "landwater1_regional_abs_ML.pdf"
+rpt_names["rpt_name_landwater2_regional_abs_ML"] <- "landwater2_regional_abs_ML.pdf"
+rpt_names <- rpt_names[order(names(rpt_names))]
 
 # Regions and deciles to plot
 region_list <- c(1:32)
@@ -101,299 +55,510 @@ target_deciles <- c("FoodDemand_Group1", "FoodDemand_Group2", "FoodDemand_Group3
                     "FoodDemand_Group6", "FoodDemand_Group10")
 
 # Load demand projections for individual scenarios
-if(ABS) {
+
+# helper for file reading
+read_rds_map <- function(base_dir, files_named) {
+  # Read a named character vector of filenames from base_dir into a named list
+  lapply(files_named, function(f) readRDS(file.path(base_dir, f)))
+}
+gcamoutput <- list()
+amboutput <- list()
+
+if(ABS_ML) {
   
   # GCAM results, from files produced by the 101 script
-  gcamoutput_Ref_ML <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_ML.RDS"))
-  gcamoutput_Ref_HD_HPR <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_HD_HPR.RDS"))
-  gcamoutput_Ref_HD_LPR <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_HD_LPR.RDS"))
-  gcamoutput_Ref_LD_HPR <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_LD_HPR.RDS"))
-  gcamoutput_Ref_LD_LPR <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_Ref_LD_LPR.RDS"))
-  # gcamoutput_Ref_HD <-
-  #   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-  #                     "gcamoutput_Ref_HD.RDS"))
-  # gcamoutput_Ref_LD <-
-  #   readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-  #                     "gcamoutput_Ref_LD.RDS"))
+  gcam_base <- file.path("data", "processed", procdata_dir, gcam_results_dir)
+  gcam_files <- c(
+    Ref_ML     = "gcamoutput_Ref_ML.RDS",
+    Ref_HD_HPR = "gcamoutput_Ref_HD_HPR.RDS",
+    Ref_HD_LPR = "gcamoutput_Ref_HD_LPR.RDS",
+    Ref_LD_HPR = "gcamoutput_Ref_LD_HPR.RDS",
+    Ref_LD_LPR = "gcamoutput_Ref_LD_LPR.RDS")
+  gcamoutput <- bind_rows(
+    lapply(gcam_files, function(f) readRDS(file.path(gcam_base, f))),
+    gcamoutput)
+
+  # ambrosia results, from files produced by the 07 parameter for intervals script
+  amb_base <- file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
+                        demand_both_subdir, "scenarios_abs")
+  amb_files <- c(
+    Ref_ML_MLparams        = "demand_allregions_Ref_ML_gcam_MLparams.RDS",
+    Ref_ML_HDHPRparams     = "demand_allregions_Ref_ML_gcam_HD_HPR_Qtot.RDS",
+    Ref_ML_HDLPRparams     = "demand_allregions_Ref_ML_gcam_HD_LPR_Qtot.RDS",
+    Ref_ML_LDHPRparams     = "demand_allregions_Ref_ML_gcam_LD_HPR_Qtot.RDS",
+    Ref_ML_LDLPRparams     = "demand_allregions_Ref_ML_gcam_LD_LPR_Qtot.RDS")
+  amboutput <- bind_rows(
+    lapply(amb_files, function(f) readRDS(file.path(amb_base, f))),
+    amboutput)
+} 
+
+if(ABS_HP) {
+  
+  # GCAM results, from files produced by the 101 script
+  gcam_base <- file.path("data", "processed", procdata_dir, gcam_results_dir)
+  gcam_files <- c(
+    HP_ML      = "gcamoutput_HP_ML.RDS",
+    HP_HD_HPR  = "gcamoutput_HP_HD_HPR.RDS",
+    HP_HD_LPR  = "gcamoutput_HP_HD_LPR.RDS",
+    HP_LD_HPR  = "gcamoutput_HP_LD_HPR.RDS",
+    HP_LD_LPR  = "gcamoutput_HP_LD_LPR.RDS")
+  gcamoutput <- bind_rows(
+    lapply(gcam_files, function(f) readRDS(file.path(gcam_base, f))),
+    gcamoutput)
   
   # ambrosia results, from files produced by the 07 parameter for intervals script
-  amboutput_Ref_ML_MLparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_abs", "demand_allregions_MLparams.RDS"))
-  amboutput_Ref_ML_HDHPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_abs", "demand_allregions_HD_HPR_Qtot.RDS"))
-  amboutput_Ref_ML_HDLPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_abs", "demand_allregions_HD_LPR_Qtot.RDS"))
-  amboutput_Ref_ML_LDHPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_abs", "demand_allregions_LD_HPR_Qtot.RDS"))
-  amboutput_Ref_ML_LDLPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_abs", "demand_allregions_LD_LPR_Qtot.RDS"))
-  # amboutput_Ref_ML_MLparams <-
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     "demand_allregions_MLparams.RDS"))
-  # amboutput_Ref_ML_HDparams <-
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     "demand_allregions_HDparams.RDS"))
-  # amboutput_Ref_ML_LDparams <-
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     "demand_allregions_LDparams.RDS"))
-  # amboutput_Ref_ML_HPRparams <-
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     "demand_allregions_HPRparams.RDS"))
-  # amboutput_Ref_ML_LPRparams <-
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     "demand_allregions_LPRparams.RDS"))
-} 
+  amb_base <- file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
+                           demand_both_subdir, "scenarios_abs")
+  amb_files <- c(
+    Ref_ML_HP_MLparams        = "demand_allregions_Ref_ML_HP_gcam_MLparams.RDS",
+    Ref_ML_HP_HDHPRparams     = "demand_allregions_Ref_ML_HP_gcam_HD_HPR_Qtot.RDS",
+    Ref_ML_HP_HDLPRparams     = "demand_allregions_Ref_ML_HP_gcam_HD_LPR_Qtot.RDS",
+    Ref_ML_HP_LDHPRparams     = "demand_allregions_Ref_ML_HP_gcam_LD_HPR_Qtot.RDS",
+    Ref_ML_HP_LDLPRparams     = "demand_allregions_Ref_ML_HP_gcam_LD_LPR_Qtot.RDS")
+  amboutput <- bind_rows(
+    lapply(amb_files, function(f) readRDS(file.path(amb_base, f))),
+    amboutput)
+}
 
 if(DIFF) {
     
   # GCAM results, from files produced by the 101 script
-  gcamoutput_diffs_Ref_ML_HP <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_diffs_Ref_ML_HP.RDS"))
-  gcamoutput_diffs_Ref_HD_HPR_HP <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_diffs_Ref_HD_HPR_HP.RDS"))
-  gcamoutput_diffs_Ref_HD_LPR_HP <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_diffs_Ref_HD_LPR_HP.RDS"))
-  gcamoutput_diffs_Ref_LD_HPR_HP <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_diffs_Ref_LD_HPR_HP.RDS"))
-  gcamoutput_diffs_Ref_LD_LPR_HP <-
-    readRDS(file.path("data", "processed", procdata_dir, gcam_results_dir,
-                      "gcamoutput_diffs_Ref_LD_LPR_HP.RDS"))
+  gcam_base <- file.path("data", "processed", procdata_dir, gcam_results_dir)
+  gcam_diff_files <- c(
+    Ref_ML_HP       = "gcamoutput_diffs_Ref_ML_HP.RDS",
+    Ref_HD_HPR_HP   = "gcamoutput_diffs_Ref_HD_HPR_HP.RDS",
+    Ref_HD_LPR_HP   = "gcamoutput_diffs_Ref_HD_LPR_HP.RDS",
+    Ref_LD_HPR_HP   = "gcamoutput_diffs_Ref_LD_HPR_HP.RDS",
+    Ref_LD_LPR_HP   = "gcamoutput_diffs_Ref_LD_LPR_HP.RDS")
+  gcamoutput_diffs <- read_rds_map(gcam_base, gcam_diff_files)
   
   # ambrosia results, from files produced by the 07 parameter for intervals script
-  # amboutput_diffs_Ref_ML_MLparams <- 
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     demand_diffs_subdir, "demand_diffs_allregions_MLparams.RDS"))
-  # amboutput_diffs_Ref_ML_HPRparams <- 
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     demand_diffs_subdir, "demand_diffs_allregions_HPRparams.RDS"))
-  # amboutput_diffs_Ref_ML_LPRparams <- 
-  #   readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-  #                     demand_diffs_subdir, "demand_diffs_allregions_LPRparams.RDS"))
-  amboutput_diffs_Ref_ML_MLparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_diff", 
-                      "demand_diffs_allregions_MLparams.RDS"))
-  amboutput_diffs_Ref_ML_HDHPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_diff", 
-                      "demand_diffs_allregions_HD_HPR_Qtot.RDS"))
-  amboutput_diffs_Ref_ML_HDLPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_diff", 
-                      "demand_diffs_allregions_HD_LPR_Qtot.RDS"))
-  amboutput_diffs_Ref_ML_LDHPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_diff", 
-                      "demand_diffs_allregions_LD_HPR_Qtot.RDS"))
-  amboutput_diffs_Ref_ML_LDLPRparams <-
-    readRDS(file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
-                      demand_both_subdir, "scenarios_diff", 
-                      "demand_diffs_allregions_LD_LPR_Qtot.RDS"))
+  amb_diff_base <- file.path("data", "processed", procdata_dir, procdata_subdir_RefMLgcam,
+                             demand_both_subdir, "scenarios_diff")
+  amb_diff_files <- c(
+    Ref_ML_MLparams    = "demand_diffs_allregions_MLparams.RDS",
+    Ref_ML_HDHPRparams = "demand_diffs_allregions_HD_HPR_Qtot.RDS",
+    Ref_ML_HDLPRparams = "demand_diffs_allregions_HD_LPR_Qtot.RDS",
+    Ref_ML_LDHPRparams = "demand_diffs_allregions_LD_HPR_Qtot.RDS",
+    Ref_ML_LDLPRparams = "demand_diffs_allregions_LD_LPR_Qtot.RDS")
+  amboutput_diffs <- read_rds_map(amb_diff_base, amb_diff_files)
 }
 
-# Initialize dfs of regional plotting data
-p_all_regional_abs <- p_all_regional_abs_plain <- 
-  p_all_regional_abs_plain_compare <- data.frame()
-p_all_regional_diff <- p_all_regional_diff_plain <- 
-  p_all_regional_diff_plain_compare <- data.frame()
-p_all_regional_elast_abs <- p_all_regional_elast_abs_plain <- data.frame()
-p_all_regional_elast_diff <- p_all_regional_elast_diff_plain <- data.frame()
-p_all_regional_price_abs <- p_all_regional_price_abs_plain <- 
-  p_all_regional_price_abs_plain_compare <- data.frame()
-p_all_regional_price_diff <- p_all_regional_price_diff_plain <- 
-  p_all_regional_price_diff_plain_compare <- data.frame()
-p_all_decile_abs <- p_all_decile_abs_plain <- 
-  p_all_decile_abs_plain_compare <- data.frame()
-p_all_decile_diff <- p_all_decile_diff_plain <- data.frame()
-p_all_regional_decile_abs <- p_all_regional_decile_abs_plain <- 
-  p_all_regional_decile_abs_plain_compare <- data.frame()
-p_all_regional_decile_diff <- p_all_regional_decile_diff_plain <- data.frame()
-reg_ens_bc_targetyr <- data.frame()
-reg_diffs_ens_bc_targetyr <- data.frame()
-p_all_regional_decomp_abs <- data.frame()
-p_all_regional_decomp_diff <- data.frame()
+# Initialize a list of plot-data dfs for every report
+p_all <- setNames(
+  replicate(length(rpt_names), data.frame(), simplify = FALSE),
+  sub("^rpt_name_", "", names(rpt_names))
+)
+
+# Initialize lists for accumulating results for bar plots
+reg_ens_bc_ML_targetyr1 <- reg_ens_bc_ML_targetyr2 <-
+  reg_diffs_ens_bc_targetyr1 <- reg_diffs_ens_bc_targetyr2 <- list()
 
 # Create plots by region
 for(region_id in region_list) {
   
   message("Region ", region_id)
   
-  if(ABS) {
+  # ----------------------------------------------------------------------------
+  # Absolute outcome plots
+  # ----------------------------------------------------------------------------
+  
+  if(ABS_HP) {
+    
+    message("HP plots")
     
     # Load regional ensemble data
-    reg_ens_bc <- readRDS(
-      file.path(reg_results_path_abs,  
+    reg_ens_bc_HP <- readRDS(
+      file.path(reg_ens_path$HP$abs,  
                 paste0("demand_R", region_id, scen_case_abs, ".RDS")))
     
     if(DEMAND_REG) {
       
       message(" Creating regional demand plot")
       
-      # # with four scenarios each from ambrosia and GCAM
+      # HP: with four scenarios each from ambrosia and GCAM
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_HP,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        # GCAM (set 1, orange)
+        scen_solid_1              = gcamoutput[["HP_ML"]],
+        scen_solid_name_1         = "GCAM HP ML",
+        scen_dashed_dark_1        = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1   = "GCAM HP HD-HPR",
+        scen_dashed_light_1       = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1  = "GCAM HP HD-LPR",
+        scen_dotted_dark_1        = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1   = "GCAM HP LD-HPR",
+        scen_dotted_light_1       = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1  = "GCAM HP LD-LPR",
+        
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2         = "ambrosia HP ML",
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2   = "ambrosia HP HD-HPR",
+        scen_dashed_light_2       = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2  = "ambrosia HP HD-LPR",
+        scen_dotted_dark_2        = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2   = "ambrosia HP LD-HPR",
+        scen_dotted_light_2       = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2  = "ambrosia HP LD-LPR",
+        
+        return_data = TRUE   # or FALSE to get a ggplot
+      )
+      
+      # Accumulate results
+      p_all$demand_regional_abs_HP <-
+        bind_rows(p_all$demand_regional_abs_HP, p_reg)
+    }
+    
+    if(PRICE) {
+      
+      message(" Creating regional price plot")
+      
+      # HP: with four scenarios each from ambrosia and GCAM
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_HP,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        value_cols  = c("Y.region", "Ps", "Pn"),
+        value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                        "Non-staples price (2005$/Mcal)"),
+        
+        # GCAM (set 1, orange)
+        scen_solid_1              = gcamoutput[["HP_ML"]],
+        scen_solid_name_1         = "GCAM HP ML",
+        scen_dashed_dark_1        = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1   = "GCAM HP HD-HPR",
+        scen_dashed_light_1       = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1  = "GCAM HP HD-LPR",
+        scen_dotted_dark_1        = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1   = "GCAM HP LD-HPR",
+        scen_dotted_light_1       = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1  = "GCAM HP LD-LPR",
+        
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2         = "ambrosia HP ML",
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2   = "ambrosia HP HD-HPR",
+        scen_dashed_light_2       = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2  = "ambrosia HP HD-LPR",
+        scen_dotted_dark_2        = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2   = "ambrosia HP LD-HPR",
+        scen_dotted_light_2       = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2  = "ambrosia HP LD-LPR",
+        
+        return_data = TRUE,   # or FALSE to get a ggplot
+        y_label = "Value"
+      )
+      
+      # Accumulate results
+      p_all$price_regional_abs_HP <- 
+        bind_rows(p_all$price_regional_abs_HP, p_reg)
+    }
+    
+    if(DEMAND_DEC) {
+      
+      message(" Creating decile demand plot")
+      
+      # HP: with four scenarios each from ambrosia and GCAM
+      p_dec <- map_dfr(target_deciles, function(cg) {
+        plot_decile_demand_comparison(
+          demand_reg = reg_ens_bc_HP,
+          reg_num = region_id,
+          consumer_group = cg,
+          
+          # GCAM (set 1, orange)
+          scen_solid_1              = gcamoutput[["HP_ML"]],
+          scen_solid_name_1         = "GCAM ML",
+          scen_dashed_dark_1        = gcamoutput[["HP_HD_HPR"]],
+          scen_dashed_dark_name_1   = "GCAM HD-HPR",
+          scen_dashed_light_1       = gcamoutput[["HP_HD_LPR"]],
+          scen_dashed_light_name_1  = "GCAM HD-LPR",
+          scen_dotted_dark_1        = gcamoutput[["HP_LD_HPR"]],
+          scen_dotted_dark_name_1   = "GCAM LD-HPR",
+          scen_dotted_light_1       = gcamoutput[["HP_LD_LPR"]],
+          scen_dotted_light_name_1  = "GCAM LD-LPR",
+          
+          # ambrosia (set 2, blue)
+          scen_solid_2              = amboutput[["Ref_ML_HP_MLparams"]],
+          scen_solid_name_2         = "ambrosia ML",
+          scen_dashed_dark_2        = amboutput[["Ref_ML_HP_HDHPRparams"]],
+          scen_dashed_dark_name_2   = "ambrosia HD-HPR",
+          scen_dashed_light_2       = amboutput[["Ref_ML_HP_HDLPRparams"]],
+          scen_dashed_light_name_2  = "ambrosia HD-LPR",
+          scen_dotted_dark_2        = amboutput[["Ref_ML_HP_LDHPRparams"]],
+          scen_dotted_dark_name_2   = "ambrosia LD-HPR",
+          scen_dotted_light_2       = amboutput[["Ref_ML_HP_LDLPRparams"]],
+          scen_dotted_light_name_2  = "ambrosia LD-LPR",
+          
+          ci_level = 0.90,
+          return_data = TRUE
+        ) %>%
+          mutate(region_label = paste0("Region ", region_id))
+      })
+      
+      # Accumulate results
+      p_all$demand_decile_abs_HP <- 
+        bind_rows(p_all$demand_decile_abs_HP, p_dec)  
+    }
+    
+    if(DEMAND_REG_DEC) {
+      
+      message(" Creating region/decile demand plot")
+      
+      # HP: with four scenarios each from ambrosia and GCAM
+      p_reg_dec <- plot_region_and_decile_demand_comparison(
+        demand_reg = reg_ens_bc_HP,
+        reg_num    = region_id,
+        
+        # GCAM (set 1, orange)
+        scen_solid_1              = gcamoutput[["HP_ML"]],
+        scen_solid_name_1         = "GCAM ML",
+        scen_dashed_dark_1        = gcamoutput[["HP_HD_HPR"]],
+        scen_dashed_dark_name_1   = "GCAM HD-HPR",
+        scen_dashed_light_1       = gcamoutput[["HP_HD_LPR"]],
+        scen_dashed_light_name_1  = "GCAM HD-LPR",
+        scen_dotted_dark_1        = gcamoutput[["HP_LD_HPR"]],
+        scen_dotted_dark_name_1   = "GCAM LD-HPR",
+        scen_dotted_light_1       = gcamoutput[["HP_LD_LPR"]],
+        scen_dotted_light_name_1  = "GCAM LD-LPR",
+        
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_solid_name_2         = "ambrosia ML",
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HP_HDHPRparams"]],
+        scen_dashed_dark_name_2   = "ambrosia HD-HPR",
+        scen_dashed_light_2       = amboutput[["Ref_ML_HP_HDLPRparams"]],
+        scen_dashed_light_name_2  = "ambrosia HD-LPR",
+        scen_dotted_dark_2        = amboutput[["Ref_ML_HP_LDHPRparams"]],
+        scen_dotted_dark_name_2   = "ambrosia LD-HPR",
+        scen_dotted_light_2       = amboutput[["Ref_ML_HP_LDLPRparams"]],
+        scen_dotted_light_name_2  = "ambrosia LD-LPR",
+        
+        ci_level    = 0.90,
+        return_data = TRUE
+      ) %>%
+        mutate(region_label = paste0("Region ", region_id))
+      
+      # Accumulate results
+      p_all$demand_regional_decile_abs_HP <- 
+        bind_rows( p_all$demand_regional_decile_abs_HP, p_reg_dec)
+    }
+  }
+  
+  if(ABS_ML) {
+    
+    message("ML plots")
+    
+    # Load regional ensemble data
+    reg_ens_bc_ML <- readRDS(
+      file.path(reg_ens_path$ML$abs,  
+                paste0("demand_R", region_id, scen_case_abs, ".RDS")))
+    
+    if(DEMAND_REG) {
+      
+      message(" Creating regional demand plot")
+
+      # ML: with four scenarios each from ambrosia and GCAM
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
 
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
         scen_solid_name_1         = "GCAM ML",
-        scen_dashed_dark_1        = gcamoutput_Ref_HD_HPR,
+        scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
         scen_dashed_dark_name_1   = "GCAM HD-HPR",
-        scen_dashed_light_1       = gcamoutput_Ref_HD_LPR,
+        scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
         scen_dashed_light_name_1  = "GCAM HD-LPR",
-        scen_dotted_dark_1        = gcamoutput_Ref_LD_HPR,
+        scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
         scen_dotted_dark_name_1   = "GCAM LD-HPR",
-        scen_dotted_light_1       = gcamoutput_Ref_LD_LPR,
+        scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
         scen_dotted_light_name_1  = "GCAM LD-LPR",
 
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
 
         return_data = TRUE   # or FALSE to get a ggplot
       )
 
       # Accumulate results
-      p_all_regional_abs <- bind_rows(p_all_regional_abs, p_reg)
-
+      p_all$demand_regional_abs_ML <- 
+        bind_rows(p_all$demand_regional_abs_ML, p_reg)
+           
       # plain version: ambrosia ML scenario only
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
 
         # ambrosia (set 2)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         return_data = TRUE   # or FALSE to get a ggplot
       )
 
       # Accumulate results
-      p_all_regional_abs_plain <- bind_rows(p_all_regional_abs_plain, p_reg)
-      
+      p_all$demand_regional_abs_ML_plain <-
+        bind_rows( p_all$demand_regional_abs_ML_plain, p_reg)
+
       # plain version with comparison: ambrosia and GCAM ML scenarios only
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
-        
+
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
         scen_solid_name_1         = "GCAM ML",
 
         # ambrosia (set 2)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        
+
         return_data = TRUE   # or FALSE to get a ggplot
       )
-      
+
       # Accumulate results
-      p_all_regional_abs_plain_compare <- bind_rows(p_all_regional_abs_plain_compare, p_reg)
+      p_all$demand_regional_abs_ML_plain_compare <-
+        bind_rows( p_all$demand_regional_abs_ML_plain_compare, p_reg)
+
     }
     
     if (ELAST) {
       
       message(" Creating regional elasticity plot")
       
-      # with four scenarios each from ambrosia and GCAM
+      # with four scenarios from ambrosia
       p_el <- plot_regional_elasticity_comparison(
-        elast_reg = reg_ens_bc,
+        elast_reg = reg_ens_bc_ML,
         reg_num   = region_id,
         ci_level  = 0.90,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
         return_data = TRUE
       )
       
       # Accumulate results
-      p_all_regional_elast_abs <- bind_rows(p_all_regional_elast_abs, p_el)
+      p_all$elasticity_regional_abs_ML <- 
+        bind_rows(p_all$elasticity_regional_abs_ML, p_el)
       
       # plain version: ambrosia ML scenario only
       p_el <- plot_regional_elasticity_comparison(
-        elast_reg = reg_ens_bc,
+        elast_reg = reg_ens_bc_ML,
         reg_num   = region_id,
         ci_level  = 0.90,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         return_data = TRUE
       )
       
       # Accumulate results
-      p_all_regional_elast_abs_plain <- 
-        bind_rows(p_all_regional_elast_abs_plain, p_el)
+      p_all$elasticity_regional_abs_ML_plain <- 
+        bind_rows( p_all$elasticity_regional_abs_ML_plain, p_el)
     }
     
     if(PRICE) {
       
       message(" Creating regional price plot")
 
-      # plain version with comparison: ambrosia and GCAM ML scenarios only
+      # ML: with four scenarios each from ambrosia and GCAM
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
         
         value_cols  = c("Y.region", "Ps", "Pn"),
-        value_names = c("Income pc (region)", "Staples price (Ps)", "Non-staples price (Pn)"),
+        value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                        "Non-staples price (2005$/Mcal)"),
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
         scen_solid_name_1         = "GCAM ML",
+        scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
+        scen_dashed_dark_name_1   = "GCAM HD-HPR",
+        scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
+        scen_dashed_light_name_1  = "GCAM HD-LPR",
+        scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
+        scen_dotted_dark_name_1   = "GCAM LD-HPR",
+        scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
+        scen_dotted_light_name_1  = "GCAM LD-LPR",
         
-        # ambrosia (set 2)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2   = "ambrosia HD-HPR",
+        scen_dashed_light_2       = amboutput[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2  = "ambrosia HD-LPR",
+        scen_dotted_dark_2        = amboutput[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2   = "ambrosia LD-HPR",
+        scen_dotted_light_2       = amboutput[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
-        return_data = TRUE   # or FALSE to get a ggplot
+        return_data = TRUE,   # or FALSE to get a ggplot
+        y_label = "Value"
       )
       
       # Accumulate results
-      p_all_regional_price_abs_plain_compare <- 
-        bind_rows(p_all_regional_price_abs_plain_compare, p_reg)
+      p_all$price_regional_abs_ML <- 
+        bind_rows(p_all$price_regional_abs_ML, p_reg)
+      
+      # plain version with comparison: ambrosia and GCAM ML scenarios only
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_ML,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        value_cols  = c("Y.region", "Ps", "Pn"),
+        value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                        "Non-staples price (2005$/Mcal)"),
+        
+        # GCAM (set 1, orange)
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
+        scen_solid_name_1         = "GCAM ML",
+        
+        # ambrosia (set 2)
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_2         = "ambrosia ML",
+        
+        return_data = TRUE,   # or FALSE to get a ggplot
+        y_label = "Value"
+      )
+      
+      # Accumulate results
+      p_all$price_regional_abs_ML_plain_compare <- 
+        bind_rows(p_all$price_regional_abs_ML_plain_compare, p_reg)
       
     }
     
@@ -401,35 +566,35 @@ for(region_id in region_list) {
       
       message(" Creating decile demand plot")
       
-      # with four scenarios each from ambrosia and GCAM
+      # ML: with four scenarios each from ambrosia and GCAM
       p_dec <- map_dfr(target_deciles, function(cg) {
         plot_decile_demand_comparison(
-          demand_reg = reg_ens_bc,
+          demand_reg = reg_ens_bc_ML,
           reg_num = region_id,
           consumer_group = cg,
 
           # GCAM (set 1, orange)
-          scen_solid_1              = gcamoutput_Ref_ML,
+          scen_solid_1              = gcamoutput[["Ref_ML"]],
           scen_solid_name_1         = "GCAM ML",
-          scen_dashed_dark_1        = gcamoutput_Ref_HD_HPR,
+          scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
           scen_dashed_dark_name_1   = "GCAM HD-HPR",
-          scen_dashed_light_1       = gcamoutput_Ref_HD_LPR,
+          scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
           scen_dashed_light_name_1  = "GCAM HD-LPR",
-          scen_dotted_dark_1        = gcamoutput_Ref_LD_HPR,
+          scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
           scen_dotted_dark_name_1   = "GCAM LD-HPR",
-          scen_dotted_light_1       = gcamoutput_Ref_LD_LPR,
+          scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
           scen_dotted_light_name_1  = "GCAM LD-LPR",
 
           # ambrosia (set 2, blue)
-          scen_solid_2              = amboutput_Ref_ML_MLparams,
+          scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
           scen_solid_name_2         = "ambrosia ML",
-          scen_dashed_dark_2        = amboutput_Ref_ML_HDHPRparams,
+          scen_dashed_dark_2        = amboutput[["Ref_ML_HDHPRparams"]],
           scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-          scen_dashed_light_2       = amboutput_Ref_ML_HDLPRparams,
+          scen_dashed_light_2       = amboutput[["Ref_ML_HDLPRparams"]],
           scen_dashed_light_name_2  = "ambrosia HD-LPR",
-          scen_dotted_dark_2        = amboutput_Ref_ML_LDHPRparams,
+          scen_dotted_dark_2        = amboutput[["Ref_ML_LDHPRparams"]],
           scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-          scen_dotted_light_2       = amboutput_Ref_ML_LDLPRparams,
+          scen_dotted_light_2       = amboutput[["Ref_ML_LDLPRparams"]],
           scen_dotted_light_name_2  = "ambrosia LD-LPR",
 
           ci_level = 0.90,
@@ -439,17 +604,18 @@ for(region_id in region_list) {
       })
 
       # Accumulate results
-      p_all_decile_abs <- bind_rows(p_all_decile_abs, p_dec)
+      p_all$demand_decile_abs_ML <- 
+        bind_rows(p_all$demand_decile_abs_ML, p_dec)
 
       # plain version: ambrosia ML scenario only
       p_dec <- map_dfr(target_deciles, function(cg) {
         plot_decile_demand_comparison(
-          demand_reg = reg_ens_bc,
+          demand_reg = reg_ens_bc_ML,
           reg_num = region_id,
           consumer_group = cg,
 
           # ambrosia (set 2, blue)
-          scen_solid_2              = amboutput_Ref_ML_MLparams,
+          scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
           scen_solid_name_2         = "ambrosia ML",
 
           ci_level = 0.90,
@@ -459,21 +625,22 @@ for(region_id in region_list) {
       })
 
       # Accumulate results
-      p_all_decile_abs_plain <- bind_rows(p_all_decile_abs_plain, p_dec)
+      p_all$demand_decile_abs_ML_plain <- 
+        bind_rows(p_all$demand_decile_abs_ML_plain, p_dec)
 
       # plain version with compare: ambrosia and GCAM ML scenarios only
       p_dec <- map_dfr(target_deciles, function(cg) {
         plot_decile_demand_comparison(
-          demand_reg = reg_ens_bc,
+          demand_reg = reg_ens_bc_ML,
           reg_num = region_id,
           consumer_group = cg,
           
           # GCAM (set 1, orange)
-          scen_solid_1              = gcamoutput_Ref_ML,
+          scen_solid_1              = gcamoutput[["Ref_ML"]],
           scen_solid_name_1         = "GCAM ML",
           
           # ambrosia (set 2, blue)
-          scen_solid_2              = amboutput_Ref_ML_MLparams,
+          scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
           scen_solid_name_2         = "ambrosia ML",
           
           ci_level = 0.90,
@@ -483,40 +650,41 @@ for(region_id in region_list) {
       })
       
       # Accumulate results
-      p_all_decile_abs_plain_compare <- bind_rows(p_all_decile_abs_plain_compare, p_dec)
+      p_all$demand_decile_abs_ML_plain_compare <- 
+        bind_rows(p_all$demand_decile_abs_ML_plain_compare, p_dec)
     }
     
     if(DEMAND_REG_DEC) {
       
       message(" Creating region/decile demand plot")
       
-      # with four scenarios each from ambrosia and GCAM
+      # ML: with four scenarios each from ambrosia and GCAM
       p_reg_dec <- plot_region_and_decile_demand_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
         scen_solid_name_1         = "GCAM ML",
-        scen_dashed_dark_1        = gcamoutput_Ref_HD_HPR,
+        scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
         scen_dashed_dark_name_1   = "GCAM HD-HPR",
-        scen_dashed_light_1       = gcamoutput_Ref_HD_LPR,
+        scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
         scen_dashed_light_name_1  = "GCAM HD-LPR",
-        scen_dotted_dark_1        = gcamoutput_Ref_LD_HPR,
+        scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
         scen_dotted_dark_name_1   = "GCAM LD-HPR",
-        scen_dotted_light_1       = gcamoutput_Ref_LD_LPR,
+        scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
         scen_dotted_light_name_1  = "GCAM LD-LPR",
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
         ci_level    = 0.90,
@@ -525,15 +693,16 @@ for(region_id in region_list) {
         mutate(region_label = paste0("Region ", region_id))
       
       # Accumulate results
-      p_all_regional_decile_abs <- bind_rows(p_all_regional_decile_abs, p_reg_dec)
+      p_all$demand_regional_decile_abs_ML <- 
+        bind_rows( p_all$demand_regional_decile_abs_ML, p_reg_dec)
       
       # plain version: ambrosia ML scenario only
       p_reg_dec <- plot_region_and_decile_demand_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         ci_level    = 0.90,
@@ -542,19 +711,20 @@ for(region_id in region_list) {
         mutate(region_label = paste0("Region ", region_id))
       
       # Accumulate results
-      p_all_regional_decile_abs_plain <- bind_rows(p_all_regional_decile_abs_plain, p_reg_dec)
+      p_all$demand_regional_decile_abs_ML_plain <- 
+        bind_rows(p_all$demand_regional_decile_abs_ML_plain, p_reg_dec)
       
       # plain version with compare: ambrosia and GCAM ML scenarios only
       p_reg_dec <- plot_region_and_decile_demand_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput[["Ref_ML"]],
         scen_solid_name_1         = "GCAM ML",
 
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        scen_solid_2              = amboutput[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         ci_level    = 0.90,
@@ -563,40 +733,47 @@ for(region_id in region_list) {
         mutate(region_label = paste0("Region ", region_id))
       
       # Accumulate results
-      p_all_regional_decile_abs_plain_compare <- 
-        bind_rows(p_all_regional_decile_abs_plain_compare, p_reg_dec)
+      p_all$demand_regional_decile_abs_ML_plain_compare <- 
+        bind_rows( p_all$demand_regional_decile_abs_ML_plain_compare, p_reg_dec)
     }
     
     if(BAR) {
       
       message(" Collecting regional demand for bar plot")
       
-      # Accumulate demand in target year
-      reg_ens_bc_targetyr <- 
-        bind_rows(reg_ens_bc_targetyr,
-                  reg_ens_bc %>% 
-                    filter(year == target_year,
+      # Accumulate demand in target years
+      reg_ens_bc_ML_targetyr1 <- 
+        bind_rows(reg_ens_bc_ML_targetyr1,
+                  reg_ens_bc_ML %>% 
+                    filter(year == target_year1,
+                           `gcam-consumer` == "FoodDemand_Group1"))
+      reg_ens_bc_ML_targetyr2 <- 
+        bind_rows(reg_ens_bc_ML_targetyr2,
+                  reg_ens_bc_ML %>% 
+                    filter(year == target_year2,
                            `gcam-consumer` == "FoodDemand_Group1"))
     }
     
     if(DECOMP) {
       
+      message(" Creating regional demand decomposition plot")
+
       # Load regional decomposition ensemble data
       reg_ens_price <- readRDS(
-        file.path(reg_results_path_price_abs,  
+        file.path(reg_ens_path$MLprice$abs,  
                   paste0("demand_R", region_id, scen_case_abs, ".RDS")))
       reg_ens_income <- readRDS(
-        file.path(reg_results_path_income_abs,  
+        file.path(reg_ens_path$MLincome$abs,  
                   paste0("demand_R", region_id, scen_case_abs, ".RDS")))
       reg_ens_scale <- readRDS(
-        file.path(reg_results_path_scale_abs,  
+        file.path(reg_ens_path$MLscale$abs,  
                   paste0("demand_R", region_id, scen_case_abs, ".RDS")))
       
       # Inside the region loop, after loading demand_full and having the 3 sub-ensembles available:
       p_decomp <- plot_regional_uncertainty_decomposition(
-        demand_full = reg_ens_bc,
+        demand_full = reg_ens_bc_ML,
         reg_num     = region_id,
-        scen_ml     = amboutput_Ref_ML_MLparams,
+        scen_ml     = amboutput[["Ref_ML_MLparams"]],
         scen_ml_name = "Ambrosia ML",
         ens_price   = reg_ens_price,
         ens_income  = reg_ens_income,
@@ -605,16 +782,89 @@ for(region_id in region_list) {
         return_data = TRUE
       )
       
-      p_all_regional_decomp_abs <- bind_rows(p_all_regional_decomp_abs, p_decomp)
+      p_all$demand_regional_abs_decomp_ML <- 
+        bind_rows(p_all$demand_regional_abs_decomp_ML, p_decomp)
       
     }
+    
+    if(LAND_WATER) {
+      
+      message(" Creating land and water plots")
+      
+        # ML: with four scenarios from GCAM, first three land-water variables
+        p_reg <- plot_regional_comparison(
+          reg_num    = region_id,
+          ci_level   = 0.90,
+          
+          value_cols  = c("cropland", "pasture", "bio_production"),
+          value_names = c("Cropland (10^3 km^2)", "Pasture (10^3 km^2)", 
+                          "Biomass production (EJ)"),
+          
+          # GCAM (set 1, orange)
+          scen_solid_1              = gcamoutput[["Ref_ML"]],
+          scen_solid_name_1         = "GCAM ML",
+          scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
+          scen_dashed_dark_name_1   = "GCAM HD-HPR",
+          scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
+          scen_dashed_light_name_1  = "GCAM HD-LPR",
+          scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
+          scen_dotted_dark_name_1   = "GCAM LD-HPR",
+          scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
+          scen_dotted_light_name_1  = "GCAM LD-LPR",
+          
+          show_ribbons = FALSE,
+          start_year = 2020,
+          return_data = TRUE,   # or FALSE to get a ggplot
+          y_label = "Value"
+        )
+        
+        # Accumulate results
+        p_all$landwater1_regional_abs_ML <- 
+          bind_rows(p_all$landwater1_regional_abs_ML, p_reg)
+        
+        # ML: with four scenarios from GCAM, second three land-water variables
+        p_reg <- plot_regional_comparison(
+          reg_num    = region_id,
+          ci_level   = 0.90,
+          
+          value_cols  = c("withdrawals", "forest", "emissions"),
+          value_names = c("Water withdrawals (km^3)", "Forest (10^3 km^2)", 
+                          "LUC emissions (MtC/yr)"),
+          
+          # GCAM (set 1, orange)
+          scen_solid_1              = gcamoutput[["Ref_ML"]],
+          scen_solid_name_1         = "GCAM ML",
+          scen_dashed_dark_1        = gcamoutput[["Ref_HD_HPR"]],
+          scen_dashed_dark_name_1   = "GCAM HD-HPR",
+          scen_dashed_light_1       = gcamoutput[["Ref_HD_LPR"]],
+          scen_dashed_light_name_1  = "GCAM HD-LPR",
+          scen_dotted_dark_1        = gcamoutput[["Ref_LD_HPR"]],
+          scen_dotted_dark_name_1   = "GCAM LD-HPR",
+          scen_dotted_light_1       = gcamoutput[["Ref_LD_LPR"]],
+          scen_dotted_light_name_1  = "GCAM LD-LPR",
+          
+          show_ribbons = FALSE,
+          start_year = 2020,
+          return_data = TRUE,   # or FALSE to get a ggplot
+          y_label = "Value"
+        )
+        
+        # Accumulate results
+        p_all$landwater2_regional_abs_ML <- 
+          bind_rows(p_all$landwater2_regional_abs_ML, p_reg)
+    }
+        
   }
+  
+  # ----------------------------------------------------------------------------
+  # Difference plots
+  # ----------------------------------------------------------------------------
   
   if(DIFF) {
     
     # Load regional ensemble data
-    reg_ens_bc <- readRDS(
-      file.path(reg_results_path_diff,  
+    reg_ens_bc_ML <- readRDS(
+      file.path(reg_ens_path$ML$diff,  
                 paste0("demand_R", region_id, scen_case_diff, ".RDS")))
     
     if(DEMAND_REG) {
@@ -623,76 +873,78 @@ for(region_id in region_list) {
       
       # with four scenarios each from ambrosia and GCAM
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_diffs_Ref_ML_HP,
+        scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
         scen_solid_name_1         = "GCAM ML",
-        scen_dashed_dark_1        = gcamoutput_diffs_Ref_HD_HPR_HP,
+        scen_dashed_dark_1        = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
         scen_dashed_dark_name_1   = "GCAM HD-HPR",
-        scen_dashed_light_1       = gcamoutput_diffs_Ref_HD_LPR_HP,
+        scen_dashed_light_1       = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
         scen_dashed_light_name_1  = "GCAM HD-LPR",
-        scen_dotted_dark_1        = gcamoutput_diffs_Ref_LD_HPR_HP,
+        scen_dotted_dark_1        = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
         scen_dotted_dark_name_1   = "GCAM LD-HPR",
-        scen_dotted_light_1       = gcamoutput_diffs_Ref_LD_LPR_HP,
+        scen_dotted_light_1       = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
         scen_dotted_light_name_1  = "GCAM LD-LPR",
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_diffs_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput_diffs[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_diffs_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput_diffs[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_diffs_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput_diffs[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_diffs_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput_diffs[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
         return_data = TRUE   # or FALSE to get a ggplot
       )
       
       # Accumulate results
-      p_all_regional_diff <- bind_rows(p_all_regional_diff, p_reg)
+      p_all$demand_regional_diff_MLHP <- 
+        bind_rows(p_all$demand_regional_diff_MLHP, p_reg)
       
       # plain version: with ambrosia ML scenario only
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         return_data = TRUE   # or FALSE to get a ggplot
       )
       
       # Accumulate results
-      p_all_regional_diff_plain <- bind_rows(p_all_regional_diff_plain, p_reg)
+      p_all$demand_regional_diff_MLHP_plain <- 
+        bind_rows(p_all$demand_regional_diff_MLHP_plain, p_reg)
       
       # plain version with compare: ambrosia and GCAM ML scenarios only
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_diffs_Ref_ML_HP,
+        scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
         scen_solid_name_1         = "GCAM ML",
 
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
         
         return_data = TRUE   # or FALSE to get a ggplot
       )
       
       # Accumulate results
-      p_all_regional_diff_plain_compare <- 
-        bind_rows(p_all_regional_diff_plain_compare, p_reg)
+      p_all$demand_regional_diff_MLHP_plain_compare <- 
+        bind_rows(p_all$demand_regional_diff_MLHP_plain_compare, p_reg)
       
     }
     
@@ -700,75 +952,120 @@ for(region_id in region_list) {
       
       message(" Creating regional elasticity difference plot")
       
-      # with four scenarios each from ambrosia and GCAM
+      # with four scenarios from ambrosia
       p_el <- plot_regional_elasticity_comparison(
-        elast_reg = reg_ens_bc,
+        elast_reg = reg_ens_bc_ML,
         reg_num   = region_id,
         ci_level  = 0.90,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_diffs_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput_diffs[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_diffs_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput_diffs[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_diffs_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput_diffs[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_diffs_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput_diffs[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
         return_data = TRUE
       )
       
       # Accumulate results
-      p_all_regional_elast_diff <- bind_rows(p_all_regional_elast_diff, p_el)
+      p_all$elasticity_regional_diff_MLHP <- 
+        bind_rows(p_all$elasticity_regional_diff_MLHP, p_el)
       
       # plain version: with ambrosia ML scenario only
       p_el <- plot_regional_elasticity_comparison(
-        elast_reg = reg_ens_bc,
+        elast_reg = reg_ens_bc_ML,
         reg_num   = region_id,
         ci_level  = 0.90,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         return_data = TRUE
       )
       
       # Accumulate results
-      p_all_regional_elast_diff_plain <- 
-        bind_rows(p_all_regional_elast_diff_plain, p_el)
+      p_all$elasticity_regional_diff_MLHP_plain <- 
+        bind_rows(p_all$elasticity_regional_diff_MLHP_plain, p_el)
     }
     
     if(PRICE) {
       
       message(" Creating regional price difference plot")
 
-      # plain version with comparison: ambrosia and GCAM ML scenarios only
+      # with four scenarios each from ambrosia and GCAM
       p_reg <- plot_regional_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num    = region_id,
         ci_level   = 0.90,
         
         value_cols  = c("Y.region", "Ps", "Pn"),
-        value_names = c("Income pc (region)", "Staples price (Ps)", "Non-staples price (Pn)"),
+        value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                        "Non-staples price (2005$/Mcal)"),
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_Ref_ML,
+        scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
         scen_solid_name_1         = "GCAM ML",
+        scen_dashed_dark_1        = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
+        scen_dashed_dark_name_1   = "GCAM HD-HPR",
+        scen_dashed_light_1       = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
+        scen_dashed_light_name_1  = "GCAM HD-LPR",
+        scen_dotted_dark_1        = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
+        scen_dotted_dark_name_1   = "GCAM LD-HPR",
+        scen_dotted_light_1       = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
+        scen_dotted_light_name_1  = "GCAM LD-LPR",
         
-        # ambrosia (set 2)
-        scen_solid_2              = amboutput_Ref_ML_MLparams,
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
+        scen_dashed_dark_2        = amboutput_diffs[["Ref_ML_HDHPRparams"]],
+        scen_dashed_dark_name_2   = "ambrosia HD-HPR",
+        scen_dashed_light_2       = amboutput_diffs[["Ref_ML_HDLPRparams"]],
+        scen_dashed_light_name_2  = "ambrosia HD-LPR",
+        scen_dotted_dark_2        = amboutput_diffs[["Ref_ML_LDHPRparams"]],
+        scen_dotted_dark_name_2   = "ambrosia LD-HPR",
+        scen_dotted_light_2       = amboutput_diffs[["Ref_ML_LDLPRparams"]],
+        scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
-        return_data = TRUE   # or FALSE to get a ggplot
+        return_data = TRUE,   # or FALSE to get a ggplot
+        y_label = "Difference"
       )
       
       # Accumulate results
-      p_all_regional_price_diff_plain_compare <- 
-        bind_rows(p_all_regional_price_diff_plain_compare, p_reg)
+      p_all$price_regional_diff_MLHP <- 
+        bind_rows(p_all$price_regional_diff_MLHP, p_reg)
+      
+      # plain version with comparison: ambrosia and GCAM ML scenarios only
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_ML,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        value_cols  = c("Y.region", "Ps", "Pn"),
+        value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                        "Non-staples price (2005$/Mcal)"),
+        
+        # GCAM (set 1, orange)
+        scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
+        scen_solid_name_1         = "GCAM ML",
+
+        # ambrosia (set 2, blue)
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
+        scen_solid_name_2         = "ambrosia ML",
+
+        return_data = TRUE,   # or FALSE to get a ggplot
+        y_label = "Difference"
+      )
+      
+      # Accumulate results
+      p_all$price_regional_diff_MLHP_plain_compare <- 
+        bind_rows(p_all$price_regional_diff_MLHP_plain_compare, p_reg)
       
     }
     
@@ -779,32 +1076,32 @@ for(region_id in region_list) {
       # with four scenarios each from ambrosia and GCAM
       p_dec <- map_dfr(target_deciles, function(cg) {
         plot_decile_demand_comparison(
-          demand_reg = reg_ens_bc,
+          demand_reg = reg_ens_bc_ML,
           reg_num = region_id,
           consumer_group = cg,
 
           # GCAM (set 1, orange)
-          scen_solid_1              = gcamoutput_diffs_Ref_ML_HP,
+          scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
           scen_solid_name_1         = "GCAM ML",
-          scen_dashed_dark_1        = gcamoutput_diffs_Ref_HD_HPR_HP,
+          scen_dashed_dark_1        = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
           scen_dashed_dark_name_1   = "GCAM HD-HPR",
-          scen_dashed_light_1       = gcamoutput_diffs_Ref_HD_LPR_HP,
+          scen_dashed_light_1       = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
           scen_dashed_light_name_1  = "GCAM HD-LPR",
-          scen_dotted_dark_1        = gcamoutput_diffs_Ref_LD_HPR_HP,
+          scen_dotted_dark_1        = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
           scen_dotted_dark_name_1   = "GCAM LD-HPR",
-          scen_dotted_light_1       = gcamoutput_diffs_Ref_LD_LPR_HP,
+          scen_dotted_light_1       = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
           scen_dotted_light_name_1  = "GCAM LD-LPR",
           
           # ambrosia (set 2, blue)
-          scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+          scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
           scen_solid_name_2         = "ambrosia ML",
-          scen_dashed_dark_2        = amboutput_diffs_Ref_ML_HDHPRparams,
+          scen_dashed_dark_2        = amboutput_diffs[["Ref_ML_HDHPRparams"]],
           scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-          scen_dashed_light_2       = amboutput_diffs_Ref_ML_HDLPRparams,
+          scen_dashed_light_2       = amboutput_diffs[["Ref_ML_HDLPRparams"]],
           scen_dashed_light_name_2  = "ambrosia HD-LPR",
-          scen_dotted_dark_2        = amboutput_diffs_Ref_ML_LDHPRparams,
+          scen_dotted_dark_2        = amboutput_diffs[["Ref_ML_LDHPRparams"]],
           scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-          scen_dotted_light_2       = amboutput_diffs_Ref_ML_LDLPRparams,
+          scen_dotted_light_2       = amboutput_diffs[["Ref_ML_LDLPRparams"]],
           scen_dotted_light_name_2  = "ambrosia LD-LPR",
           
           ci_level = 0.90,
@@ -814,17 +1111,18 @@ for(region_id in region_list) {
       })
       
       # Accumulate results
-      p_all_decile_diff <- bind_rows(p_all_decile_diff, p_dec)
+      p_all$demand_decile_diff_MLHP <- 
+        bind_rows(p_all$demand_decile_diff_MLHP, p_dec)
       
       # plain version: with ambrosia ML scenario only
       p_dec <- map_dfr(target_deciles, function(cg) {
         plot_decile_demand_comparison(
-          demand_reg = reg_ens_bc,
+          demand_reg = reg_ens_bc_ML,
           reg_num = region_id,
           consumer_group = cg,
           
           # ambrosia (set 2, blue)
-          scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+          scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
           scen_solid_name_2         = "ambrosia ML",
 
           ci_level = 0.90,
@@ -834,7 +1132,8 @@ for(region_id in region_list) {
       })
       
       # Accumulate results
-      p_all_decile_diff_plain <- bind_rows(p_all_decile_diff_plain, p_dec)
+      p_all$demand_decile_diff_MLHP_plain <- 
+        bind_rows(p_all$demand_decile_diff_MLHP_plain, p_dec)
     }
     
     if(DEMAND_REG_DEC) {
@@ -843,31 +1142,31 @@ for(region_id in region_list) {
       
       # with four scenarios each from ambrosia and GCAM
       p_reg_dec <- plot_region_and_decile_demand_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num = region_id,
         
         # GCAM (set 1, orange)
-        scen_solid_1              = gcamoutput_diffs_Ref_ML_HP,
+        scen_solid_1              = gcamoutput_diffs[["Ref_ML_HP"]],
         scen_solid_name_1         = "GCAM ML",
-        scen_dashed_dark_1        = gcamoutput_diffs_Ref_HD_HPR_HP,
+        scen_dashed_dark_1        = gcamoutput_diffs[["Ref_HD_HPR_HP"]],
         scen_dashed_dark_name_1   = "GCAM HD-HPR",
-        scen_dashed_light_1       = gcamoutput_diffs_Ref_HD_LPR_HP,
+        scen_dashed_light_1       = gcamoutput_diffs[["Ref_HD_LPR_HP"]],
         scen_dashed_light_name_1  = "GCAM HD-LPR",
-        scen_dotted_dark_1        = gcamoutput_diffs_Ref_LD_HPR_HP,
+        scen_dotted_dark_1        = gcamoutput_diffs[["Ref_LD_HPR_HP"]],
         scen_dotted_dark_name_1   = "GCAM LD-HPR",
-        scen_dotted_light_1       = gcamoutput_diffs_Ref_LD_LPR_HP,
+        scen_dotted_light_1       = gcamoutput_diffs[["Ref_LD_LPR_HP"]],
         scen_dotted_light_name_1  = "GCAM LD-LPR",
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
-        scen_dashed_dark_2        = amboutput_diffs_Ref_ML_HDHPRparams,
+        scen_dashed_dark_2        = amboutput_diffs[["Ref_ML_HDHPRparams"]],
         scen_dashed_dark_name_2   = "ambrosia HD-HPR",
-        scen_dashed_light_2       = amboutput_diffs_Ref_ML_HDLPRparams,
+        scen_dashed_light_2       = amboutput_diffs[["Ref_ML_HDLPRparams"]],
         scen_dashed_light_name_2  = "ambrosia HD-LPR",
-        scen_dotted_dark_2        = amboutput_diffs_Ref_ML_LDHPRparams,
+        scen_dotted_dark_2        = amboutput_diffs[["Ref_ML_LDHPRparams"]],
         scen_dotted_dark_name_2   = "ambrosia LD-HPR",
-        scen_dotted_light_2       = amboutput_diffs_Ref_ML_LDLPRparams,
+        scen_dotted_light_2       = amboutput_diffs[["Ref_ML_LDLPRparams"]],
         scen_dotted_light_name_2  = "ambrosia LD-LPR",
         
         ci_level = 0.90,
@@ -876,15 +1175,16 @@ for(region_id in region_list) {
         mutate(region_label = paste0("Region ", region_id))
       
       # Accumulate results
-      p_all_regional_decile_diff <- bind_rows(p_all_regional_decile_diff, p_reg_dec)
+      p_all$demand_regional_decile_diff_MLHP <- 
+        bind_rows(p_all$demand_regional_decile_diff_MLHP, p_reg_dec)
       
       # plain version: with ambrosia ML scenario only
       p_reg_dec <- plot_region_and_decile_demand_comparison(
-        demand_reg = reg_ens_bc,
+        demand_reg = reg_ens_bc_ML,
         reg_num = region_id,
         
         # ambrosia (set 2, blue)
-        scen_solid_2              = amboutput_diffs_Ref_ML_MLparams,
+        scen_solid_2              = amboutput_diffs[["Ref_ML_MLparams"]],
         scen_solid_name_2         = "ambrosia ML",
 
         ci_level = 0.90,
@@ -893,7 +1193,8 @@ for(region_id in region_list) {
         mutate(region_label = paste0("Region ", region_id))
       
       # Accumulate results
-      p_all_regional_decile_diff_plain <- bind_rows(p_all_regional_decile_diff_plain, p_reg_dec)
+      p_all$demand_regional_decile_diff_MLHP_plain <- 
+        bind_rows(p_all$demand_regional_decile_diff_MLHP_plain, p_reg_dec)
     }
     
     if(BAR) {
@@ -901,31 +1202,38 @@ for(region_id in region_list) {
       message(" Collecting regional demand differences for bar plot")
       
       # Accumulate demand in target year
-      reg_diffs_ens_bc_targetyr <- 
-        bind_rows(reg_diffs_ens_bc_targetyr,
-                  reg_ens_bc %>% 
-                    filter(year == target_year,
+      reg_diffs_ens_bc_targetyr1 <- 
+        bind_rows(reg_diffs_ens_bc_targetyr1,
+                  reg_ens_bc_ML %>% 
+                    filter(year == target_year1,
+                           `gcam-consumer` == "FoodDemand_Group1"))
+      reg_diffs_ens_bc_targetyr2 <- 
+        bind_rows(reg_diffs_ens_bc_targetyr2,
+                  reg_ens_bc_ML %>% 
+                    filter(year == target_year2,
                            `gcam-consumer` == "FoodDemand_Group1"))
     }
     
     if(DECOMP) {
       
+      message(" Creating regional demand difference decomposition plot")
+
       # Load regional decomposition ensemble data
       reg_ens_price <- readRDS(
-        file.path(reg_results_path_price_diff,  
+        file.path(reg_ens_path$MLprice$diff,  
                   paste0("demand_R", region_id, scen_case_diff, ".RDS")))
       reg_ens_income <- readRDS(
-        file.path(reg_results_path_income_diff,  
+        file.path(reg_ens_path$MLincome$diff,  
                   paste0("demand_R", region_id, scen_case_diff, ".RDS")))
       reg_ens_scale <- readRDS(
-        file.path(reg_results_path_scale_diff,  
+        file.path(reg_ens_path$MLscale$diff,  
                   paste0("demand_R", region_id, scen_case_diff, ".RDS")))
       
       # Inside the region loop, after loading demand_full and having the 3 sub-ensembles available:
       p_decomp <- plot_regional_uncertainty_decomposition(
-        demand_full = reg_ens_bc,
+        demand_full = reg_ens_bc_ML,
         reg_num     = region_id,
-        scen_ml     =  amboutput_diffs_Ref_ML_MLparams,
+        scen_ml     =  amboutput_diffs[["Ref_ML_MLparams"]],
         scen_ml_name = "Ambrosia ML",
         ens_price   = reg_ens_price,
         ens_income  = reg_ens_income,
@@ -934,87 +1242,47 @@ for(region_id in region_list) {
         return_data = TRUE
       )
       
-      p_all_regional_decomp_diff <- bind_rows(p_all_regional_decomp_diff, p_decomp)
+      p_all$demand_regional_diff_decomp_MLHP <- 
+        bind_rows(p_all$demand_regional_diff_decomp_MLHP, p_decomp)
       
     }
     
   }
 }
 
+# ------------------------------------------------------------------------------
 # Produce and save pdfs
+# ------------------------------------------------------------------------------
 
-if(ABS) {
+if(ABS_HP) {
+  
+  message("HP pdfs")
   
   if(DEMAND_REG) {
     
     message("Creating regional demand pdf")
     
     plot_regional_comparison_pdf(
-      p_all_regional_abs,
+      p_all = p_all[["demand_regional_abs_HP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_abs,
-      y_label = "Demand (kcal/day)"
-    )
-
-    plot_regional_comparison_pdf(
-      p_all_regional_abs_plain,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_regional_abs_plain,
-      y_label = "Demand (kcal/day)"
-    )
-    
-    plot_regional_comparison_pdf(
-      p_all_regional_abs_plain_compare,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_regional_abs_plain_compare,
-      y_label = "Demand (kcal/day)"
-    )
-  }
-  
-  if (ELAST) {
-    
-    message("Creating regional elasticity pdf")
-    
-    plot_regional_elasticity_comparison_pdf(
-      p_all = p_all_regional_elast_abs,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_regional_elast_abs,
-      y_step = 0.1,
-      y_label = "Elasticity"
-    )
-    
-    plot_regional_elasticity_comparison_pdf(
-      p_all = p_all_regional_elast_abs_plain,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_regional_elast_abs_plain,
-      y_step = 0.1,
-      y_label = "Elasticity"
-    )
+      filename = rpt_names[["rpt_name_demand_regional_abs_HP"]]
+    )  
   }
   
   if(PRICE) {
-
+    
     message("Creating regional price pdf")
-
-    # If this is > 0, the pdf wrapper will drop/garble facets
-    print(
-      sum(is.na(factor(as.character(p_reg$demand_type),
-                     levels = c("Y.region","Ps","Pn"))))
-    )
     
     plot_regional_comparison_pdf(
-      p_all_regional_price_abs_plain_compare,
+      p_all = p_all[["price_regional_abs_HP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_price_abs_plain_compare,
+      filename = rpt_names[["rpt_name_price_regional_abs_HP"]],
       value_cols  = c("Y.region", "Ps", "Pn"),
-      value_names = c("Income pc (region)", "Staples price (Ps)", "Non-staples price (Pn)"),
-      y_label = "Price (units)"
+      value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                      "Non-staples price (2005$/Mcal)"),
+      y_label = "Value"
     )
   }
   
@@ -1023,27 +1291,10 @@ if(ABS) {
     message("Creating decile demand pdf")
     
     plot_decile_demand_comparison_pdf(
-      p_all = p_all_decile_abs,
+      p_all = p_all[["demand_decile_abs_HP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_decile_abs,
-      y_label = "Demand (kcal/day)"
-    )
-
-    plot_decile_demand_comparison_pdf(
-      p_all = p_all_decile_abs_plain,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_decile_abs_plain,
-      y_label = "Demand (kcal/day)"
-    )
-    
-    plot_decile_demand_comparison_pdf(
-      p_all = p_all_decile_abs_plain_compare,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_decile_abs_plain_compare,
-      y_label = "Demand (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_decile_abs_HP"]]
     )
   }
   
@@ -1052,27 +1303,145 @@ if(ABS) {
     message("Creating region/decile demand pdf")
     
     plot_region_and_decile_demand_comparison_pdf(
-      p_all = p_all_regional_decile_abs,
+      p_all = p_all[["demand_regional_decile_abs_HP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decile_abs,
-      y_label = "Demand (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_decile_abs_HP"]]
+    )
+  }
+}
+
+if(ABS_ML) {
+  
+  message("ML pdfs")
+  
+  if(DEMAND_REG) {
+    
+    message("Creating regional demand pdf")
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["demand_regional_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_abs_ML"]]
+    )
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["demand_regional_abs_ML_plain"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_abs_ML_plain"]]
+    )
+
+    plot_regional_comparison_pdf(
+      p_all = p_all[["demand_regional_abs_ML_plain_compare"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_abs_ML_plain_compare"]]
+    )
+
+  }
+  
+  if (ELAST) {
+    
+    message("Creating regional elasticity pdf")
+    
+    plot_regional_elasticity_comparison_pdf(
+      p_all = p_all[["elasticity_regional_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_elasticity_regional_abs_ML"]],
+      y_step = 0.1,
+      y_label = "Elasticity"
+    )
+    
+    plot_regional_elasticity_comparison_pdf(
+      p_all = p_all[["elasticity_regional_abs_ML_plain"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_elasticity_regional_abs_ML_plain"]],
+      y_step = 0.1,
+      y_label = "Elasticity"
+    )
+  }
+  
+  if(PRICE) {
+    
+    message("Creating regional price pdf")
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["price_regional_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_abs_ML"]],
+      value_cols  = c("Y.region", "Ps", "Pn"),
+      value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                      "Non-staples price (2005$/Mcal)"),
+      y_label = "Value"
+    )
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["price_regional_abs_ML_plain_compare"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_abs_ML_plain_compare"]],
+      value_cols  = c("Y.region", "Ps", "Pn"),
+      value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                      "Non-staples price (2005$/Mcal)"),
+      y_label = "Value"
+    )
+
+  }
+  
+  if(DEMAND_DEC) {
+    
+    message("Creating decile demand pdf")
+    
+    plot_decile_demand_comparison_pdf(
+      p_all = p_all[["demand_decile_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_abs_ML"]]
+    )
+    
+    plot_decile_demand_comparison_pdf(
+      p_all = p_all[["demand_decile_abs_ML_plain"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_abs_ML_plain"]]
+    )
+    
+    plot_decile_demand_comparison_pdf(
+      p_all = p_all[["demand_decile_abs_ML_plain_compare"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_decile_abs_ML_plain_compare"]]
+    )
+  }
+  
+  if(DEMAND_REG_DEC) {
+    
+    message("Creating region/decile demand pdf")
+    
+    plot_region_and_decile_demand_comparison_pdf(
+      p_all = p_all[["demand_regional_decile_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_decile_abs_ML"]]
     )
     
     plot_region_and_decile_demand_comparison_pdf(
-      p_all = p_all_regional_decile_abs_plain,
+      p_all = p_all[["demand_regional_decile_abs_ML_plain"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decile_abs_plain,
-      y_label = "Demand (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_decile_abs_ML_plain"]]
     )
     
     plot_region_and_decile_demand_comparison_pdf(
-      p_all = p_all_regional_decile_abs_plain_compare,
+      p_all = p_all[["demand_regional_decile_abs_ML_plain_compare"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decile_abs_plain_compare,
-      y_label = "Demand (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_decile_abs_ML_plain_compare"]]
     )
   }
   
@@ -1080,23 +1449,25 @@ if(ABS) {
     
     message("Creating regional demand bar pdf")
     
-    # Total demand in target year, central 90% CI, sorted by median
-    p_reg_target <- plot_region_ci_bars_one_year(
-      df = reg_ens_bc_targetyr,
-      target_year = target_year,
+    plot_region_ci_bars_pdf(
+      df_list = list(
+        reg_ens_bc_ML_targetyr1,
+        reg_ens_bc_ML_targetyr2),
       value_col = "Qtot.region",
       ci_level = 0.90,
       include_range = FALSE,
       show_median = TRUE,
-      sort_by = "median",
+      sort_by = "range_desc",
       output_dir = output_dir,
-      filename = report_name_regional_abs_bar,
-      y_label = "Total demand (kcal/person/day)"
+      filename = rpt_names[["rpt_name_demand_regional_abs_bar_ML"]],
+      y_label = "Total demand (10^3 cal/person/day)"
     )
   }
   
   if(DECOMP) {
     
+    message(" Creating regional demand decomposition pdf")
+
     teal <- "#2A9D8F"
     
     color_override <- c(
@@ -1112,14 +1483,43 @@ if(ABS) {
     )
     
     plot_regional_comparison_pdf(
-      p_all = p_all_regional_decomp_abs,
+      p_all = p_all[["demand_regional_abs_decomp_ML"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decomp_abs,
+      filename = rpt_names[["rpt_name_demand_regional_abs_decomp_ML"]],
+      value_cols  = c("Qs.region", "Qn.region", "Qtot.region"),
+      value_names = c("Staples", "Non-staples", "Total"),
       color_override = color_override,
       linetype_override = linetype_override,
       ylimit_mode = "by_region",
-      y_label = "Demand difference vs ML (kcal/day)"
+      y_label = "Demand rel. to ML (10^3 cal/day)"
+    )
+  }
+  
+  if(LAND_WATER) {
+    
+    message("Creating regional land-water pdfs")
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["landwater1_regional_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_landwater1_regional_abs_ML"]],
+      value_cols  = c("cropland", "pasture", "bio_production"),
+      value_names = c("Cropland (10^3 km^2)", "Pasture (10^3 km^2)", 
+                      "Biomass production (EJ)"),
+      y_label = "Value"
+    )
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["landwater2_regional_abs_ML"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_landwater2_regional_abs_ML"]],
+      value_cols  = c("withdrawals", "forest", "emissions"),
+      value_names = c("Water withdrawals (km^3)", "Forest (10^3 km^2)", 
+                      "LUC emissions (MtC/yr)"),
+      y_label = "Value"
     )
   }
 }
@@ -1131,27 +1531,27 @@ if(DIFF) {
     message("Creating regional demand difference pdf")
     
     plot_regional_comparison_pdf(
-      p_all_regional_diff,
+      p_all = p_all[["demand_regional_diff_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_diff,
-      y_label = "Demand difference (kcal/day)"
-    )
-
-    plot_regional_comparison_pdf(
-      p_all_regional_diff_plain,
-      region_mapping = GCAM_region_ID_mapping,
-      output_dir = output_dir,
-      filename = report_name_regional_diff_plain,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_diff_MLHP"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
     
     plot_regional_comparison_pdf(
-      p_all_regional_diff_plain_compare,
+      p_all = p_all[["demand_regional_diff_MLHP_plain"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_diff_plain_compare,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_diff_MLHP_plain"]],
+      y_label = "Demand difference (10^3 cal/day)"
+    )
+    
+    plot_regional_comparison_pdf(
+      p_all = p_all[["demand_regional_diff_MLHP_plain_compare"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_demand_regional_diff_MLHP_plain_compare"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
   }
   
@@ -1160,19 +1560,19 @@ if(DIFF) {
     message("Creating regional elasticity difference pdf")
     
     plot_regional_elasticity_comparison_pdf(
-      p_all = p_all_regional_elast_diff,
+      p_all = p_all[["elasticity_regional_diff_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_elast_diff,
+      filename = rpt_names[["rpt_name_elasticity_regional_diff_MLHP"]],
       y_step = 0.1,
       y_label = "Elasticity difference"
     )
     
     plot_regional_elasticity_comparison_pdf(
-      p_all = p_all_regional_elast_diff_plain,
+      p_all = p_all[["elasticity_regional_diff_MLHP_plain"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_elast_diff_plain,
+      filename = rpt_names[["rpt_name_elasticity_regional_diff_MLHP_plain"]],
       y_step = 0.1,
       y_label = "Elasticity difference"
     )
@@ -1182,20 +1582,26 @@ if(DIFF) {
     
     message("Creating regional price difference pdf")
     
-    # If this is > 0, the pdf wrapper will drop/garble facets
-    print(
-      sum(is.na(factor(as.character(p_reg$demand_type),
-                     levels = c("Y.region","Ps","Pn"))))
+    plot_regional_comparison_pdf(
+      p_all = p_all[["price_regional_diff_MLHP"]],
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_diff_MLHP"]],
+      value_cols  = c("Y.region", "Ps", "Pn"),
+      value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                      "Non-staples price (2005$/Mcal)"),
+      y_label = "Value"
     )
     
     plot_regional_comparison_pdf(
-      p_all_regional_price_diff_plain_compare,
+      p_all = p_all[["price_regional_diff_MLHP_plain_compare"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_price_diff_plain_compare,
+      filename = rpt_names[["rpt_name_price_regional_diff_MLHP_plain_compare"]],
       value_cols  = c("Y.region", "Ps", "Pn"),
-      value_names = c("Income pc (region)", "Staples price (Ps)", "Non-staples price (Pn)"),
-      y_label = "Price (units)"
+      value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
+                      "Non-staples price (2005$/Mcal)"),
+      y_label = "Value"
     )
   }
   
@@ -1204,19 +1610,19 @@ if(DIFF) {
     message("Creating decile demand difference pdf")
     
     plot_decile_demand_comparison_pdf(
-      p_all = p_all_decile_diff,
+      p_all = p_all[["demand_decile_diff_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_decile_diff,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_decile_diff_MLHP"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
     
     plot_decile_demand_comparison_pdf(
-      p_all = p_all_decile_diff_plain,
+      p_all = p_all[["demand_decile_diff_MLHP_plain"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_decile_diff_plain,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_decile_diff_MLHP_plain"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
   }
   
@@ -1225,19 +1631,19 @@ if(DIFF) {
     message("Creating region/decile demand difference pdf")
     
     plot_region_and_decile_demand_comparison_pdf(
-      p_all = p_all_regional_decile_diff,
+      p_all = p_all[["demand_regional_decile_diff_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decile_diff,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_decile_diff_MLHP"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
     
     plot_region_and_decile_demand_comparison_pdf(
-      p_all = p_all_regional_decile_diff_plain,
+      p_all = p_all[["demand_regional_decile_diff_MLHP_plain"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decile_diff_plain,
-      y_label = "Demand difference (kcal/day)"
+      filename = rpt_names[["rpt_name_demand_regional_decile_diff_MLHP_plain"]],
+      y_label = "Demand difference (10^3 cal/day)"
     )
   }
   
@@ -1245,23 +1651,26 @@ if(DIFF) {
     
     message("Creating regional demand difference bar pdf")
     
-    # Demand differences in target year, central 90% CI, sorted by median
-    p_reg_target <- plot_region_ci_bars_one_year(
-      df = reg_diffs_ens_bc_targetyr,
-      target_year = target_year,
+    # Demand differences in target years, central 90% CI, sorted by median
+    plot_region_ci_bars_pdf(
+      df_list = list(
+        reg_diffs_ens_bc_targetyr1,
+        reg_diffs_ens_bc_targetyr2),
       value_col = "Qtot.region",
       ci_level = 0.90,
       include_range = FALSE,
       show_median = TRUE,
-      sort_by = "median",
+      sort_by = "range_desc",
       output_dir = output_dir,
-      filename = report_name_regional_diff_bar,
-      y_label = "Total demand (kcal/person/day)"
+      filename = rpt_names[["rpt_name_demand_regional_diff_bar_MLHP"]],
+      y_label = "Total demand difference (10^3 cal/person/day)"
     )
   }
   
   if(DECOMP) {
     
+    message("Creating regional demand difference decomposition pdf")
+
     teal <- "#2A9D8F"
     
     color_override <- c(
@@ -1277,14 +1686,16 @@ if(DIFF) {
     )
     
     plot_regional_comparison_pdf(
-      p_all = p_all_regional_decomp_diff,
+      p_all = p_all[["demand_regional_diff_decomp_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
-      filename = report_name_regional_decomp_diff,
+      filename = rpt_names[["rpt_name_demand_regional_diff_decomp_MLHP"]],
+      value_cols  = c("Qs.region", "Qn.region", "Qtot.region"),
+      value_names = c("Staples", "Non-staples", "Total"),
       color_override = color_override,
       linetype_override = linetype_override,
       ylimit_mode = "by_region",
-      y_label = "Demand difference vs ML (kcal/day)"
+      y_label = "Demand difference rel. to ML (10^3 cal/day)"
     )
   }
 }
