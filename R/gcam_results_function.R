@@ -21,9 +21,7 @@ get_GCAM_results <- function(proj_data, inc_shares, scen, data_dir, gcam_dir) {
   prices <- proj_data[['food demand prices']] %>%
     select(-c(nodeinput, Units, scenario)) %>%
     spread(key=input,value=value) %>%
-    rename(Ps = FoodDemand_Staples,Pn = FoodDemand_NonStaples) %>%
-    merge(GCAM_region_ID_mapping) %>%
-    relocate(GCAM_region_ID)
+    rename(Ps = FoodDemand_Staples,Pn = FoodDemand_NonStaples)
   
   # version if per cap income by decile from GCAM output were correct
   # income <- proj_data[['subregional income']] %>%
@@ -57,15 +55,51 @@ get_GCAM_results <- function(proj_data, inc_shares, scen, data_dir, gcam_dir) {
     spread(key=input,value=value) %>%
     rename(RBs = FoodDemand_Staples,RBn = FoodDemand_NonStaples)
   
-  # combine into a single df and add variables; use inner_join just in case there
-  # are some rows not in common across data types (leave them out)
-  data_list <- list(prices,income,demand,reg_bias)
-  gcamoutput <- data_list %>% 
-    reduce(inner_join,by=c("region","gcam-consumer","year")) %>%
-    # add material consumption
-    mutate(Qm = Y - Qs - Qn) %>%
+  cropland <- proj_data[['Aggregated Land Allocation']] %>%
+    filter(`land-allocation` == "crops") %>%
+    rename(cropland = value) %>%
+    select(region, year, cropland)
+  
+  withdrawals <- proj_data[['water withdrawals by region']] %>%
+    rename(withdrawals = value) %>%
+    select(region, year, withdrawals)
+  
+  biomass <- proj_data[['purpose-grown biomass production']] %>%
+    rename(bio_production = value) %>%
+    select(region, year, bio_production)
+  
+  pasture <- proj_data[['Aggregated Land Allocation']] %>%
+    filter(`land-allocation` == "pasture (grazed)") %>%
+    rename(pasture = value) %>%
+    select(region, year, pasture)
+  
+  forest <- proj_data[['Aggregated Land Allocation']] %>%
+    filter(`land-allocation` == "Softwood_Forest" | 
+             `land-allocation` == "Hardwood_Forest") %>%
+    spread(key = `land-allocation`, value = value) %>%
+    mutate(forest = Hardwood_Forest + Softwood_Forest) %>%
+    select(region, year, forest)
+  
+  luc_emis <- proj_data[['LUC emissions by region']] %>%
+    group_by(region, year) %>%
+    summarize(emissions = sum(value)) %>%
+    ungroup()
+  
+  # combine into a single df and add variables
+  
+  # Merge separate groups since they have different variables to merge on
+  group1 <- list(prices, income, demand) %>% 
+    reduce(full_join, by = c("region", "gcam-consumer", "year"))
+  group2 <- list(cropland, withdrawals, biomass, pasture, forest, luc_emis) %>% 
+    reduce(full_join, by = c("region", "year"))
+  
+  # Combine and continue; gcam-consumer will be NA for second group
+  gcamoutput <- full_join(group1, group2, by = c("region", "year")) %>%
+    merge(GCAM_region_ID_mapping) %>%
+    relocate(GCAM_region_ID) %>%
     # add consumption shares
-    mutate(alpha.s = Qs/Y, alpha.n = Qn/Y, alpha.m = Qm/Y, alpha.t = alpha.s + alpha.n) %>%
+    mutate(alpha.s = Ps*Qs/Y, alpha.n = Pn*Qn/Y, alpha.m = 1 - alpha.s - alpha.n,
+           alpha.t = alpha.s + alpha.n) %>%
     # add regional demand per cap
     group_by(region,year) %>%
     mutate(Qs.region = if_else(
