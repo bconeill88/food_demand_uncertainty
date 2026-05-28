@@ -48,8 +48,8 @@ calc_price_elast <- function(food_demand,param_structure) {
 #
 # Qs_min and Qn_min are the minimum demand thresholds that are imposed within the 
 # food.dmnd() function. (However, the official version of ambrosia hard wires these
-# values rather than taking them as arguments, so these parameters are not currently
-# being used but kept for possible future use.)
+# values rather than taking them as arguments. I am using my own version which takes
+# them as arguments.)
 #
 # Function calls food.dmnd() from ambrosia package, which calculates demand and 
 # budget shares, accounting for fixed effects and regional bias, and which applies 

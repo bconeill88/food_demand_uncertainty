@@ -83,6 +83,7 @@ make_density_plots_global <- function(
     paramdata,                         
     param_cols  = c("As","ks","eps1n","xi.ss","xi.nn",
                     "xi.cross","lambda","An","Pm"),
+    param_names = NULL,
     vline_values = NULL,              
     vline_labels = NULL,              
     vline_colors = NULL,              
@@ -101,11 +102,30 @@ make_density_plots_global <- function(
     stop("No matching parameter columns found in paramdata.")
   }
   
+  # Optional display names for facet labels
+  if (is.null(param_names)) {
+    param_names <- param_cols
+  } else {
+    if (length(param_names) != length(param_cols)) {
+      stop("param_names must have the same length as matched param_cols.")
+    }
+  }
+  
+  param_name_map <- setNames(param_names, param_cols)
+  
   paramdata_long <- paramdata %>%
     select(all_of(param_cols)) %>%
-    pivot_longer(cols = everything(),
-                 names_to = "parameter",
-                 values_to = "value")
+    pivot_longer(
+      cols = everything(),
+      names_to = "parameter",
+      values_to = "value"
+    ) %>%
+    mutate(
+      parameter_label = factor(
+        param_name_map[parameter],
+        levels = param_names
+      )
+    )
   
   #------------------------------------------------------------
   # 2. Build vertical-line data (if any)
@@ -129,9 +149,10 @@ make_density_plots_global <- function(
       }
       
       tibble(
-        parameter  = param_cols,
-        line_value = vals,
-        line_label = label
+        parameter       = param_cols,
+        parameter_label = factor(param_name_map[param_cols], levels = param_names),
+        line_value      = vals,
+        line_label      = label
       )
     }
     
@@ -154,7 +175,7 @@ make_density_plots_global <- function(
   #------------------------------------------------------------
   g <- ggplot(paramdata_long, aes(x = value)) +
     geom_density(linewidth = line_width, color = "black") +
-    facet_wrap(~ parameter, ncol = facet_ncol, scales = "free") +
+    facet_wrap(~ parameter_label, ncol = facet_ncol, scales = "free") +
     theme(strip.text = element_text(size = font_size)) +
     ggtitle(title, subtitle = subtitle)
   

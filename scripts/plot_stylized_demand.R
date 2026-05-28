@@ -53,7 +53,7 @@ Pn_typ <- 0.25
 
 # create stylized input data
 inputdata <- data.frame(
-  Y = c(seq(0.5, 10, 0.5), seq(12, 40, 2), seq(50, 100, 10)),
+  Y = c(seq(0.05, 5, 0.05), seq(5.5, 10, 0.5), seq(12, 40, 2), seq(50, 100, 10)),
   Ps = Ps_typ,
   Pn = Pn_typ)
 
@@ -91,7 +91,7 @@ make_demand_vs_income_pdf(
   demand_2017,
   demand_2021,
   file.path(out_dir, "demand_stylized_vs_income.pdf"),
-  x_min = 0.5,
+  x_min = 0.05,
   x_max = 50
 )
 
@@ -100,7 +100,8 @@ make_elasticities_vs_income_pdf(
   demand_2017,
   demand_2021,
   file.path(out_dir, "elasticities_stylized_vs_income.pdf"),
-  x_min = 0.5,
-  x_max = 20
+  x_min = 0.05,
+  x_max = 20,
+  sqrt_x = TRUE
 )
 

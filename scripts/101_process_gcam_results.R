@@ -56,23 +56,29 @@ inc_share_data <-
 GCAM_output_list <- 
   # list("HP_ML"=prj_HP_ML)
   # list("Ref_ML" = prj_Ref_ML, "HP_ML" = prj_HP_ML)
-  list("Ref_HD_HPR" = prj_Ref_HD_HPR, "Ref_HD_LPR" = prj_Ref_HD_LPR,
+  # list("Ref_ML" = prj_Ref_ML, "Ref_HD_HPR" = prj_Ref_HD_HPR, 
+  #      "Ref_HD_LPR" = prj_Ref_HD_LPR, "Ref_LD_HPR" = prj_Ref_LD_HPR, 
+  #      "Ref_LD_LPR" = prj_Ref_LD_LPR)
+  list("Ref_ML" = prj_Ref_ML, "Ref_HD_HPR" = prj_Ref_HD_HPR, "Ref_HD_LPR" = prj_Ref_HD_LPR,
        "Ref_LD_HPR" = prj_Ref_LD_HPR, "Ref_LD_LPR" = prj_Ref_LD_LPR,
-       "HP_HD_HPR" = prj_HP_HD_HPR, "HP_HD_LPR" = prj_HP_HD_LPR,
-       "HP_LD_HPR" = prj_HP_LD_HPR) # , "HP_LD_LPR" = prj_HP_LD_LPR)
-  # list("Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
-  # list("Ref_ML"=prj_Ref_ML, "Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
-  # list("Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
-  #      "Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR)
-  # list("Ref_HD"=prj_Ref_HD,"Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
-  #      "Ref_LD"=prj_Ref_LD,"Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR,
-  #      "Ref_ML"=prj_Ref_ML,"HP_ML"=prj_HP_ML,"Ref_GCAM7"=prj_Ref_GCAM7,
-  #      "HP_GCAM7"=prj_HP_GCAM7)
+       "HP_ML" = prj_HP_ML, "HP_HD_HPR" = prj_HP_HD_HPR, "HP_HD_LPR" = prj_HP_HD_LPR,
+       "HP_LD_HPR" = prj_HP_LD_HPR, "HP_LD_LPR" = prj_HP_LD_LPR)
+  # list("HP_HD_HPR" = prj_HP_HD_HPR)
+# list("Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
+# list("Ref_ML"=prj_Ref_ML, "Ref_HD"=prj_Ref_HD, "Ref_LD"=prj_Ref_LD)
+# list("Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
+#      "Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR)
+# list("Ref_HD"=prj_Ref_HD,"Ref_HPR"=prj_Ref_HPR,"HP_HPR"=prj_HP_HPR,
+#      "Ref_LD"=prj_Ref_LD,"Ref_LPR"=prj_Ref_LPR,"HP_LPR"=prj_HP_LPR,
+#      "Ref_ML"=prj_Ref_ML,"HP_ML"=prj_HP_ML,"Ref_GCAM7"=prj_Ref_GCAM7,
+#      "HP_GCAM7"=prj_HP_GCAM7)
 
 # produce processed GCAM output data
 iwalk(GCAM_output_list, ~ get_GCAM_results(.x, inc_share_data, .y, procdata_dir,
                                            gcam_results_dir))
 
+if(TRUE) {
+  
 # calculate and save differences in GCAM results between high price and reference
 # scenarios
 
@@ -112,6 +118,8 @@ walk(scen_string_list, ~ subtract_gcam_demand_dfs(
   paste0("Ref_", .x),
   out_dir = out_dir)
 )
+
+}
 
 # read a results file to check
 # tmp <- readRDS(file.path(out_dir, "gcamoutput_diffs_Ref_LD_HPR_HP.RDS"))

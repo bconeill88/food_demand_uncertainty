@@ -6,6 +6,7 @@
 source("R/common_definitions.R")
 source("R/init_packages.R")
 source("R/demand_with_intervals_plot_functions.R")
+source("R/model_fit_functions.R")
 
 # Make sure packages are installed/loaded
 ensure_package(tidyverse)
@@ -19,18 +20,22 @@ DEMAND_REG <- FALSE
 DEMAND_DEC <- FALSE
 DEMAND_REG_DEC <- FALSE
 ELAST <- FALSE
-PRICE <- FALSE # and income
+PRICE <- TRUE # and income
 LAND_WATER <- FALSE
 BAR <- FALSE
-SCATTER <- TRUE
+SCATTER <- FALSE
+DENSITY <- FALSE
 target_year1 = 2050
 target_year2 = 2100
 DECOMP <- FALSE
 
+# Whether to create tables of model fit and model comparison metrics
+METRICS <- FALSE
+
 # Indicate whether to create absolute or difference plots
 ABS_ML <- TRUE
 ABS_HP <- TRUE
-DIFF <- TRUE
+DIFF <- FALSE
 
 # Define paths for regional ensemble results
 reg_ens_path <- generate_ens_path_names()
@@ -41,13 +46,18 @@ scen_case_diff <- "_diffs_ens_bc"
 
 # Directory for report result
 output_dir <- file.path("output", "reports", procdata_dir, procdata_subdir_RefMLgcam)
+output_dir_tables <- file.path("output", "tables")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(output_dir_tables, recursive = TRUE, showWarnings = FALSE)
 
 # Define report file names
 rpt_names <- generate_report_names()
 # ad hoc addition
 rpt_names["rpt_name_landwater1_regional_abs_ML"] <- "landwater1_regional_abs_ML.pdf"
 rpt_names["rpt_name_landwater2_regional_abs_ML"] <- "landwater2_regional_abs_ML.pdf"
+rpt_names["rpt_name_demand_abs_density_ML"] <- "demand_abs_density_ML.pdf"
+rpt_names["rpt_name_demand_abs_density_HP"] <- "demand_abs_density_HP.pdf"
+rpt_names["rpt_name_demand_diff_density_MLHP"] <- "demand_diff_density_MLHP.pdf"
 rpt_names <- rpt_names[order(names(rpt_names))]
 
 # Regions and deciles to plot
@@ -158,7 +168,7 @@ reg_ens_bc_ML_targetyr1 <- reg_ens_bc_ML_targetyr2 <-
 # Create plots by region
 for(region_id in region_list) {
   
-  message("Region ", region_id)
+  message("\nRegion ", region_id)
   
   # ----------------------------------------------------------------------------
   # Absolute outcome plots
@@ -260,6 +270,36 @@ for(region_id in region_list) {
       # Accumulate results
       p_all$price_regional_abs_HP <- 
         bind_rows(p_all$price_regional_abs_HP, p_reg)
+      
+      # HP price/income comparison against Reference
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_HP,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        value_cols  = c("Y.region", "Ps", "Pn"),
+        value_names = c(
+          "Income pc (10^3 1990$)",
+          "Staples price (2005$/Mcal)",
+          "Non-staples price (2005$/Mcal)"
+        ),
+        
+        # Reference scenario, solid
+        scen_solid_1      = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_1 = "Reference",
+        
+        # High Price scenario, dashed
+        scen_dashed_dark_1      = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_dashed_dark_name_1 = "High Price",
+        
+        show_ribbons = FALSE,
+        return_data  = TRUE,
+        y_label      = "Value"
+      )
+      
+      p_all$price_regional_abs_HP_plain_compare <-
+        bind_rows(p_all$price_regional_abs_HP_plain_compare, p_reg)
+      
     }
     
     if(DEMAND_DEC) {
@@ -351,15 +391,15 @@ for(region_id in region_list) {
         bind_rows( p_all$demand_regional_decile_abs_HP, p_reg_dec)
     }
     
-    if(SCATTER) {
+    if(SCATTER || DENSITY || METRICS) {
       
       message(" Creating scatter plots")
       
       # Regional demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs.region", "Qn.region"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+        value_names = c("Staples", "Non-staples", "Total"),
         
         # GCAM
         scen_solid_1 = gcamoutput[["HP_ML"]],
@@ -395,8 +435,8 @@ for(region_id in region_list) {
       # Decile demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs", "Qn"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs", "Qn", "Qtot"),
+        value_names = c("Staples", "Non-staples", "Total"),
         keep_all_consumers = TRUE,
         
         # GCAM
@@ -677,6 +717,35 @@ for(region_id in region_list) {
       p_all$price_regional_abs_ML_plain_compare <- 
         bind_rows(p_all$price_regional_abs_ML_plain_compare, p_reg)
       
+      # HP price/income comparison against Reference
+      p_reg <- plot_regional_comparison(
+        demand_reg = reg_ens_bc_HP,
+        reg_num    = region_id,
+        ci_level   = 0.90,
+        
+        value_cols  = c("Y.region", "Ps", "Pn"),
+        value_names = c(
+          "Income pc (10^3 1990$)",
+          "Staples price (2005$/Mcal)",
+          "Non-staples price (2005$/Mcal)"
+        ),
+        
+        # Reference scenario, solid
+        scen_solid_1      = amboutput[["Ref_ML_MLparams"]],
+        scen_solid_name_1 = "Reference",
+        
+        # High Price scenario, dashed
+        scen_dashed_dark_1      = amboutput[["Ref_ML_HP_MLparams"]],
+        scen_dashed_dark_name_1 = "High Price",
+        
+        show_ribbons = FALSE,
+        return_data  = TRUE,
+        y_label      = "Value"
+      )
+      
+      p_all$price_regional_abs_HP_plain_compare <-
+        bind_rows(p_all$price_regional_abs_HP_plain_compare, p_reg)
+      
     }
     
     if(DEMAND_DEC) {
@@ -886,7 +955,7 @@ for(region_id in region_list) {
         file.path(reg_ens_path$MLscale$abs,  
                   paste0("demand_R", region_id, scen_case_abs, ".RDS")))
       
-      # Inside the region loop, after loading demand_full and having the 3 sub-ensembles available:
+      # Regional demand
       p_decomp <- plot_regional_uncertainty_decomposition(
         demand_full = reg_ens_bc_ML,
         reg_num     = region_id,
@@ -895,6 +964,8 @@ for(region_id in region_list) {
         ens_price   = reg_ens_price,
         ens_income  = reg_ens_income,
         ens_scale   = reg_ens_scale,
+        value_cols  = c("Qs.region", "Qn.region", "Qtot.region"),
+        value_names = c("Staples", "Non-staples", "Total"),
         ci_level    = 0.90,
         return_data = TRUE
       )
@@ -971,15 +1042,15 @@ for(region_id in region_list) {
           bind_rows(p_all$landwater2_regional_abs_ML, p_reg)
     }
         
-    if(SCATTER) {
+    if(SCATTER || DENSITY || METRICS) {
       
       message(" Creating scatter plots")
       
       # Regional demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs.region", "Qn.region"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+        value_names = c("Staples", "Non-staples", "Total"),
         
         # GCAM
         scen_solid_1 = gcamoutput[["Ref_ML"]],
@@ -1015,8 +1086,8 @@ for(region_id in region_list) {
       # Decile demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs", "Qn"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs", "Qn", "Qtot"),
+        value_names = c("Staples", "Non-staples", "Total"),
         keep_all_consumers = TRUE,
         
         # GCAM
@@ -1463,7 +1534,7 @@ for(region_id in region_list) {
         file.path(reg_ens_path$MLscale$diff,  
                   paste0("demand_R", region_id, scen_case_diff, ".RDS")))
       
-      # Inside the region loop, after loading demand_full and having the 3 sub-ensembles available:
+      # Regional demand difference
       p_decomp <- plot_regional_uncertainty_decomposition(
         demand_full = reg_ens_bc_ML,
         reg_num     = region_id,
@@ -1472,6 +1543,8 @@ for(region_id in region_list) {
         ens_price   = reg_ens_price,
         ens_income  = reg_ens_income,
         ens_scale   = reg_ens_scale,
+        value_cols  = c("Qs.region", "Qn.region", "Qtot.region"),
+        value_names = c("Staples", "Non-staples", "Total"),
         ci_level    = 0.90,
         return_data = TRUE
       )
@@ -1481,15 +1554,15 @@ for(region_id in region_list) {
       
     }
     
-    if(SCATTER) {
+    if(SCATTER || DENSITY || METRICS) {
       
       message(" Creating scatter plots")
       
       # Regional demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs.region", "Qn.region"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+        value_names = c("Staples", "Non-staples", "Total"),
         
         # GCAM
         scen_solid_1 = gcamoutput_diffs[["Ref_ML_HP"]],
@@ -1525,8 +1598,8 @@ for(region_id in region_list) {
       # Decile demand
       p_sc <- plot_scenario_scatter(
         reg_num = region_id,
-        value_cols = c("Qs", "Qn"),
-        value_names = c("Staples", "Non-staples"),
+        value_cols = c("Qs", "Qn", "Qtot"),
+        value_names = c("Staples", "Non-staples", "Total"),
         keep_all_consumers = TRUE,
         
         # GCAM
@@ -1606,7 +1679,7 @@ for(region_id in region_list) {
 
 if(ABS_HP) {
   
-  message("HP pdfs")
+  message("\nHP pdfs")
   
   if(DEMAND_REG) {
     
@@ -1633,6 +1706,27 @@ if(ABS_HP) {
       value_names = c("Income pc (10^3 1990$)", "Staples price (2005$/Mcal)", 
                       "Non-staples price (2005$/Mcal)"),
       y_label = "Value"
+    )
+    
+    # ML vs HP
+    plot_regional_comparison_pdf(
+      p_all = p_all$price_regional_abs_HP_plain_compare,
+      region_mapping = GCAM_region_ID_mapping,
+      output_dir = output_dir,
+      filename = rpt_names[["rpt_name_price_regional_abs_HP_plain_compare"]],
+      cols_per_page = 3,
+      rows_per_page = 4,
+      y_label = "Value",
+      value_cols = c(
+        "Income pc (10^3 1990$)",
+        "Staples price (2005$/Mcal)",
+        "Non-staples price (2005$/Mcal)"
+      ),
+      value_names = c(
+        "Income pc (10^3 1990$)",
+        "Staples price (2005$/Mcal)",
+        "Non-staples price (2005$/Mcal)"
+      )
     )
   }
   
@@ -1687,12 +1781,63 @@ if(ABS_HP) {
       y_label = "ambrosia price",
       value_names = c("Staples price", "Non-staples price")
     )
+    
+    plot_scatter_within_pct(
+      scatter_reg = p_all[["demand_regional_abs_scatter_HP"]],
+      scatter_dec = p_all[["demand_decile_abs_scatter_HP"]],
+      thresholds = c(1, 2, 3, 4, 5),
+      filename = "demand_scatter_within_pct_HP.pdf",
+      output_dir = output_dir
+    )
+  }
+  
+  if (DENSITY) {
+    
+    message("Creating density plot of percent differences in absolute demand (HP)")
+    
+    plot_scatter_pct_diff_density(
+      scatter_reg = p_all$demand_regional_abs_scatter_HP,
+      scatter_dec = p_all$demand_decile_abs_scatter_HP,
+      denom_floor = 1e-8,
+      clip_pct = NULL,   # optional; set NULL for no clipping
+      x_limits = NULL,   # c(-100, 100),   # optional; adjust as desired
+      filename = rpt_names[["rpt_name_demand_abs_density_HP"]],
+      output_dir = output_dir
+    )
+  }
+  
+  if(METRICS) {
+
+    message("Creating metrics of model comparison")
+    
+    metrics_reg_abs_HP <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_regional_abs_scatter_HP,
+      group_cols = c("scenario_name", "demand_type"),
+      comparison_type = "absolute",
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_regional_abs_HP.csv"
+    )
+    
+    metrics_dec_abs_HP <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_decile_abs_scatter_HP,
+      group_cols = c("scenario_name", "demand_type", "consumer_group"),
+      comparison_type = "absolute",
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_decile_abs_HP.csv"
+    )
+    
+    metrics_summary_abs_HP <- make_metrics_summary_table(
+      metrics_reg = metrics_reg_abs_HP,
+      metrics_dec = metrics_dec_abs_HP,
+      output_dir = output_dir_tables,
+      filename = "metrics_summary_abs_HP.csv"
+    )
   }
 }
 
 if(ABS_ML) {
   
-  message("ML pdfs")
+  message("\nML pdfs")
   
   if(DEMAND_REG) {
     
@@ -1831,15 +1976,17 @@ if(ABS_ML) {
     plot_region_ci_bars_pdf(
       df_list = list(
         reg_ens_bc_ML_targetyr1,
-        reg_ens_bc_ML_targetyr2),
-      value_col = "Qtot.region",
+        reg_ens_bc_ML_targetyr2
+      ),
+      value_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+      value_names = c("Staples", "Non-staples", "Total"),
       ci_level = 0.90,
       include_range = FALSE,
       show_median = TRUE,
       sort_by = "range_desc",
       output_dir = output_dir,
       filename = rpt_names[["rpt_name_demand_regional_abs_bar_ML"]],
-      y_label = "Total demand (10^3 cal/person/day)"
+      y_label = "Demand (10^3 cal/person/day)"
     )
   }
   
@@ -1929,13 +2076,65 @@ if(ABS_ML) {
       y_label = "ambrosia price",
       value_names = c("Staples price", "Non-staples price")
     )
+    
+    plot_scatter_within_pct(
+      scatter_reg = p_all[["demand_regional_abs_scatter_ML"]],
+      scatter_dec = p_all[["demand_decile_abs_scatter_ML"]],
+      thresholds = c(1, 2, 3, 4, 5),
+      filename = "demand_scatter_within_pct_ML.pdf",
+      output_dir = output_dir
+    )
+  }
+  
+  if (DENSITY) {
+    
+    message("Creating density plot of percent differences in absolute demand (ML)")
+    
+    plot_scatter_pct_diff_density(
+      scatter_reg = p_all$demand_regional_abs_scatter_ML,
+      scatter_dec = p_all$demand_decile_abs_scatter_ML,
+      denom_floor = 1e-8,
+      clip_pct = NULL,   # optional; set NULL for no clipping
+      x_limits = NULL,   # c(-100, 100),   # optional; adjust as desired
+      filename = rpt_names[["rpt_name_demand_abs_density_ML"]],
+      output_dir = output_dir
+    )
+  }
+  
+  if(METRICS) {
+    
+    message("Creating metrics of model comparison")
+    
+    metrics_reg_abs_ML <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_regional_abs_scatter_ML,
+      group_cols = c("scenario_name", "demand_type"),
+      comparison_type = "absolute",
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_regional_abs_ML.csv"
+    )
+    
+    metrics_dec_abs_ML <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_decile_abs_scatter_ML,
+      group_cols = c("scenario_name", "demand_type", "consumer_group"),
+      comparison_type = "absolute",
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_decile_abs_ML.csv"
+    )
+    
+    metrics_summary_abs_ML <- make_metrics_summary_table(
+      metrics_reg = metrics_reg_abs_ML,
+      metrics_dec = metrics_dec_abs_ML,
+      output_dir = output_dir_tables,
+      filename = "metrics_summary_abs_ML.csv"
+    )
+    
   }
   
 }
 
 if(DIFF) {
   
-  message("DIFF pdfs")
+  message("\nDIFF pdfs")
   
   if(DEMAND_REG) {
     
@@ -2066,15 +2265,17 @@ if(DIFF) {
     plot_region_ci_bars_pdf(
       df_list = list(
         reg_diffs_ens_bc_targetyr1,
-        reg_diffs_ens_bc_targetyr2),
-      value_col = "Qtot.region",
+        reg_diffs_ens_bc_targetyr2
+      ),
+      value_cols = c("Qs.region", "Qn.region", "Qtot.region"),
+      value_names = c("Staples", "Non-staples", "Total"),
       ci_level = 0.90,
       include_range = FALSE,
       show_median = TRUE,
       sort_by = "range_desc",
       output_dir = output_dir,
       filename = rpt_names[["rpt_name_demand_regional_diff_bar_MLHP"]],
-      y_label = "Total demand difference (10^3 cal/person/day)"
+      y_label = "Demand difference (10^3 cal/person/day)"
     )
   }
   
@@ -2112,20 +2313,22 @@ if(DIFF) {
   
   if(SCATTER) {
     
+    message("Creating demand difference scatter pdf")
+    
     plot_scenario_scatter_pdf(
       p_all = p_all[["demand_regional_diff_scatter_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
       filename = rpt_names[["rpt_name_demand_regional_diff_scatter_MLHP"]]
     )
-    
+
     plot_scenario_scatter_decile_pdf(
       p_all = p_all[["demand_decile_diff_scatter_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
       output_dir = output_dir,
       filename = rpt_names[["rpt_name_demand_decile_diff_scatter_MLHP"]]
     )
-    
+
     plot_scenario_scatter_pdf(
       p_all = p_all[["price_regional_diff_scatter_MLHP"]],
       region_mapping = GCAM_region_ID_mapping,
@@ -2135,7 +2338,71 @@ if(DIFF) {
       y_label = "ambrosia price difference",
       value_names = c("Staples price", "Non-staples price")
     )
+    
+    plot_scatter_within_abs(
+      scatter_reg = p_all[["demand_regional_diff_scatter_MLHP"]],
+      scatter_dec = p_all[["demand_decile_diff_scatter_MLHP"]],
+      thresholds = c(0.01, 0.05, 0.1, 0.2, 0.3),
+      filename = "demand_scatter_within_abs_MLHP.pdf",
+      output_dir = output_dir
+    )
 
   }
   
+  if(DENSITY) {
+    
+    message("Creating demand difference density pdf")
+    
+    plot_scatter_abs_diff_density(
+      scatter_reg = p_all[["demand_regional_diff_scatter_MLHP"]],
+      scatter_dec = p_all[["demand_decile_diff_scatter_MLHP"]],
+      x_limits    = NULL,
+      tail_prob   = 0.99,
+      filename    = rpt_names[["rpt_name_demand_diff_density_MLHP"]],
+      output_dir  = output_dir
+    )
+  }
+  
+  if(METRICS) {
+    
+    message("Creating metrics of model comparison")
+    
+    metrics_reg_diff <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_regional_diff_scatter_MLHP,
+      group_cols = c("scenario_name", "demand_type"),
+      comparison_type = "difference",
+      near_zero = 1e-6,
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_regional_diff.csv"
+    )
+    
+    metrics_dec_diff <- calc_scatter_fit_metrics(
+      scatter_df = p_all$demand_decile_diff_scatter_MLHP,
+      group_cols = c("scenario_name", "demand_type", "consumer_group"),
+      comparison_type = "difference",
+      near_zero = 1e-6,
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_decile_diff.csv"
+    )
+    
+    metrics_summary_diff <- make_metrics_summary_table(
+      metrics_reg = metrics_reg_diff,
+      metrics_dec = metrics_dec_diff,
+      output_dir = output_dir_tables,
+      filename = "metrics_summary_diff.csv"
+    )
+    
+    # Optional ratio summaries for the difference case
+    ratio_reg_diff <- calc_ratio_metrics(
+      df = p_all$demand_regional_diff_scatter_MLHP,
+      truth_col = "x_value",
+      pred_col  = "y_value",
+      group_cols = c("scenario_name", "demand_type"),
+      near_zero = 1e-4,
+      output_dir_tables = output_dir_tables,
+      filename = "metrics_regional_diff_ratio.csv"
+    )
+  }
+  
 }
+

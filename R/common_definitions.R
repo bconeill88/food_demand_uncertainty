@@ -21,7 +21,7 @@ obs_data_file <- "Processed_group_data_13Jan25.csv"
 
 # define sub-directories of data/raw where GCAM output can be found
 gcam_rawdata_dir <- "final_rgcam_outputs"
-gcam_rawdata_subdir <- "tables_22feb26"
+gcam_rawdata_subdir <- "tables_7mar26"
 # gcam_rawdata_subdir <- "tables_1dec25" # previous version, with by2015
 income_dist_baseyr_file <- "income_dist_by2021.csv"
 GCAM_region_ID_mapping <- readRDS(file.path("data", "raw", "GCAM_region_ID_mapping.RDS"))

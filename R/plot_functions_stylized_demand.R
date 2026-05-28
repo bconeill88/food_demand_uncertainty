@@ -97,6 +97,7 @@ plot_demand_vs_income <- function(demand_2026,
                                   include_all_three = FALSE,
                                   x_min = NULL,
                                   x_max = NULL,
+                                  sqrt_x = FALSE,
                                   label_base_nudge = 0.03,
                                   label_slope_nudge = 0.20,
                                   label_gap_frac = 0.035) {
@@ -127,8 +128,18 @@ plot_demand_vs_income <- function(demand_2026,
   d26_plot <- d_plot %>% filter(study == "2026")
   if(nrow(d26_plot) == 0) stop("No 2026 data remain after applying x_min/x_max.")
   
-  # Label x location
-  x_tgt <- .label_x_target(d26_plot$Y)
+  # Choose label x location from plotted x-range, accounting for optional sqrt scale
+  x_left_data  <- 0
+  x_right_data <- if (!is.null(x_max)) x_max else max(d26_plot$Y, na.rm = TRUE)
+  
+  if (sqrt_x) {
+    x_left_plot  <- sqrt(x_left_data)
+    x_right_plot <- sqrt(x_right_data)
+    x_tgt_plot   <- x_left_plot + 0.70 * (x_right_plot - x_left_plot)
+    x_tgt        <- x_tgt_plot^2
+  } else {
+    x_tgt <- x_left_data + 0.70 * (x_right_data - x_left_data)
+  }
   
   x_by_series <- d26_plot %>%
     group_by(series) %>%
@@ -201,14 +212,15 @@ plot_demand_vs_income <- function(demand_2026,
       color = "black"
     ) +
     labs(
-      x = "Income per cap (Y)",
+      x = "Income per cap (10^3 1990 US$/year)",
       y = "Demand",
       linetype = NULL
     ) +
     theme_minimal(base_size = 12) +
     theme(
       legend.position = if(include_all_three) "right" else "none",
-      panel.grid.minor = element_blank()
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = 10)
     ) +
     guides(
       linetype = guide_legend(override.aes = list(color = "black"))
@@ -227,6 +239,24 @@ plot_demand_vs_income <- function(demand_2026,
   
   if(!is.null(x_min) || !is.null(x_max)) {
     p <- p + coord_cartesian(xlim = c(x_min, x_max))
+  }
+  
+  # Optional sqrt x scale with explicit tick marks
+  if (sqrt_x) {
+    
+    x_upper <- if (!is.null(x_max)) x_max else max(d_plot$Y, na.rm = TRUE)
+    
+    sqrt_breaks <- c(
+      0:5,
+      seq(10, floor(x_upper / 5) * 5, by = 5)
+    ) %>%
+      unique() %>%
+      .[. <= x_upper]
+    
+    p <- p + scale_x_sqrt(
+      breaks = sqrt_breaks,
+      labels = sqrt_breaks
+    )
   }
   
   p +
@@ -249,6 +279,7 @@ make_demand_vs_income_pdf <- function(demand_2026,
                                       output_file,
                                       x_min = NULL,
                                       x_max = NULL,
+                                      sqrt_x = FALSE,
                                       width = 6.0,
                                       height = 8.5) {
   
@@ -263,7 +294,8 @@ make_demand_vs_income_pdf <- function(demand_2026,
     demand_2026 = demand_2026,
     include_all_three = FALSE,
     x_min = x_min,
-    x_max = x_max
+    x_max = x_max,
+    sqrt_x = sqrt_x
   )
   
   p2 <- plot_demand_vs_income(
@@ -272,7 +304,8 @@ make_demand_vs_income_pdf <- function(demand_2026,
     demand_2021 = demand_2021,
     include_all_three = TRUE,
     x_min = x_min,
-    x_max = x_max
+    x_max = x_max,
+    sqrt_x = sqrt_x
   )
   
   pdf(output_file, width = width, height = height)
@@ -340,7 +373,8 @@ plot_elasticities_vs_income <- function(demand_2026,
                                         demand_2021 = NULL,
                                         include_all_three = FALSE,
                                         x_min = NULL,
-                                        x_max = NULL) {
+                                        x_max = NULL,
+                                        sqrt_x = FALSE) {
   
   .require_plot_pkgs()
   sty <- .study_style_maps()
@@ -408,19 +442,20 @@ plot_elasticities_vs_income <- function(demand_2026,
       name = NULL
     ) +
     labs(
-      x = "Income per cap (Y)",
+      x = "Income per cap (10^3 1990 US$/year)",
       y = "Elasticity",
       linetype = NULL
     ) +
     theme_minimal(base_size = 12) +
     theme(
       legend.position = "right",
-      panel.grid.minor = element_blank()
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = 10)
     )
   
   # Linetype mapping:
   # - If all-three, show all three
-  # - If 2026-only, still show a linetype legend but only "This study"
+  # - If 2026-only, still show a linetype legend
   if(include_all_three) {
     
     p <- p +
@@ -428,6 +463,10 @@ plot_elasticities_vs_income <- function(demand_2026,
         values = sty$linetype_map,
         breaks = names(sty$linetype_map),
         labels = unname(sty$label_map[names(sty$linetype_map)])
+      ) +
+      guides(
+        linetype = guide_legend(override.aes = list(color = "black")),
+        color    = guide_legend(override.aes = list(linetype = "solid"))
       )
     
   } else {
@@ -435,20 +474,34 @@ plot_elasticities_vs_income <- function(demand_2026,
     p <- p +
       scale_linetype_manual(
         values = c("2026" = "solid"),
-        breaks = "2026",
-        labels = sty$label_map["2026"]
+        guide = "none"
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(linetype = "solid"))
       )
   }
-  
-  # Make linetype legend keys black (so they read clearly next to the color legend)
-  p <- p + guides(
-    linetype = guide_legend(override.aes = list(color = "black")),
-    color    = guide_legend(override.aes = list(linetype = "solid"))
-  )
   
   # Enforce x-range visually
   if(!is.null(x_min) || !is.null(x_max)) {
     p <- p + coord_cartesian(xlim = c(x_min, x_max))
+  }
+  
+  # Optional sqrt x scale with explicit tick marks
+  if (sqrt_x) {
+    
+    x_upper <- if (!is.null(x_max)) x_max else max(d_plot$Y, na.rm = TRUE)
+    
+    sqrt_breaks <- c(
+      0:5,
+      seq(10, floor(x_upper / 5) * 5, by = 5)
+    ) %>%
+      unique() %>%
+      .[. <= x_upper]
+    
+    p <- p + scale_x_sqrt(
+      breaks = sqrt_breaks,
+      labels = sqrt_breaks
+    )
   }
   
   p
@@ -461,6 +514,7 @@ make_elasticities_vs_income_pdf <- function(demand_2026,
                                             output_file,
                                             x_min = NULL,
                                             x_max = NULL,
+                                            sqrt_x = FALSE,
                                             width = 6.0,
                                             height = 8.5) {
   
@@ -475,7 +529,8 @@ make_elasticities_vs_income_pdf <- function(demand_2026,
     demand_2026 = demand_2026,
     include_all_three = FALSE,
     x_min = x_min,
-    x_max = x_max
+    x_max = x_max,
+    sqrt_x = sqrt_x
   )
   
   p2 <- plot_elasticities_vs_income(
@@ -484,7 +539,8 @@ make_elasticities_vs_income_pdf <- function(demand_2026,
     demand_2021 = demand_2021,
     include_all_three = TRUE,
     x_min = x_min,
-    x_max = x_max
+    x_max = x_max,
+    sqrt_x = sqrt_x
   )
   
   pdf(output_file, width = width, height = height)
