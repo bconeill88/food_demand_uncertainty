@@ -531,6 +531,38 @@ make_relative_to_ml <- function(p_all, ml_scenario_name) {
     select(-ml_value)
 }
 
+# Helper: compute separate x and y limits by demand_type
+build_scatter_limits <- function(df, x_step = NULL, y_step = NULL) {
+  
+  lims <- df %>%
+    group_by(demand_type) %>%
+    summarise(
+      x_min = min(x_value, na.rm = TRUE),
+      x_max = max(x_value, na.rm = TRUE),
+      y_min = min(y_value, na.rm = TRUE),
+      y_max = max(y_value, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  if (!is.null(x_step)) {
+    lims <- lims %>%
+      mutate(
+        x_min = floor(x_min / x_step) * x_step,
+        x_max = ceiling(x_max / x_step) * x_step
+      )
+  }
+  
+  if (!is.null(y_step)) {
+    lims <- lims %>%
+      mutate(
+        y_min = floor(y_min / y_step) * y_step,
+        y_max = ceiling(y_max / y_step) * y_step
+      )
+  }
+  
+  lims
+}
+
 # =============================================================================
 # Regional demand comparison plots (range + CI ribbons + scenario overlays)
 # =============================================================================
@@ -2241,8 +2273,9 @@ plot_region_ci_bars_one_year_df <- function(
 # PDF wrapper: takes list of already-filtered dfs (one per year). Produces a 
 # single pdf with one page per list element, in list order.
 plot_region_ci_bars_pdf <- function(
-    df_list,       # list of dfs; each df must contain exactly one year
-    value_col,
+    df_list,
+    value_cols = "Qtot.region",
+    value_names = value_cols,
     ci_level = 0.90,
     include_range = FALSE,
     show_median = TRUE,
@@ -2253,45 +2286,51 @@ plot_region_ci_bars_pdf <- function(
     iteration_col = "iteration",
     x_label = "Region",
     y_label = NULL,
-    title_prefix = NULL,              # optional: prefix used on every page
+    title_prefix = NULL,
     output_dir,
     filename,
     width = 11,
     height = 8.5
 ) {
   
+  # Validate inputs
   if (!is.list(df_list) || length(df_list) == 0) {
-    stop("plot_region_ci_bars_pdf_from_list(): df_list must be a non-empty list.")
+    stop("plot_region_ci_bars_pdf(): df_list must be a non-empty list.")
   }
-  if (length(df_list) > 2) {
-    stop("plot_region_ci_bars_pdf_from_list(): expected at most 2 elements in df_list.")
+  if (length(value_cols) != length(value_names)) {
+    stop("plot_region_ci_bars_pdf(): value_cols and value_names must have same length.")
   }
   
   sort_by <- match.arg(sort_by)
   
-  # Build plots
-  plots <- lapply(df_list, function(df_year) {
-    plot_region_ci_bars_one_year_df(
-      df_year = df_year,
-      value_col = value_col,
-      ci_level = ci_level,
-      include_range = include_range,
-      show_median = show_median,
-      sort_by = sort_by,
-      consumer_col = consumer_col,
-      consumer_value = consumer_value,
-      region_col = region_col,
-      iteration_col = iteration_col,
-      x_label = x_label,
-      y_label = y_label,
-      title_prefix = title_prefix
-    )
-  })
+  # Build one page for each demand type x target year
+  plots <- map2(value_cols, value_names, function(vc, vn) {
+    
+    map(df_list, function(df_year) {
+      
+      plot_region_ci_bars_one_year_df(
+        df_year = df_year,
+        value_col = vc,
+        ci_level = ci_level,
+        include_range = include_range,
+        show_median = show_median,
+        sort_by = sort_by,
+        consumer_col = consumer_col,
+        consumer_value = consumer_value,
+        region_col = region_col,
+        iteration_col = iteration_col,
+        x_label = x_label,
+        y_label = if (is.null(y_label)) "Demand (10^3 cal/person/day)" else y_label,
+        title_prefix = if (is.null(title_prefix)) vn else paste(title_prefix, vn)
+      )
+    })
+  }) %>%
+    flatten()
   
-  # Write one pdf with N pages
+  # Write one PDF with all pages
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-  grDevices::pdf(file.path(output_dir, filename), width = width, height = height, onefile = TRUE)
-  on.exit(grDevices::dev.off(), add = TRUE)
+  pdf(file.path(output_dir, filename), width = width, height = height, onefile = TRUE)
+  on.exit(dev.off(), add = TRUE)
   
   for (p in plots) print(p)
   
@@ -2316,10 +2355,16 @@ plot_regional_uncertainty_decomposition <- function(
     ens_scale,
     
     ci_level = 0.90,
-    return_data = FALSE
+    return_data = FALSE,
+    value_cols  = c("Qs.region", "Qn.region", "Qtot.region"),
+    value_names = c("Staples", "Non-staples", "Total")
 ) {
   
   stopifnot(ci_level > 0, ci_level <= 1)
+  stopifnot(length(value_cols) == 3, length(value_names) == 3)
+  
+  demand_cols   <- value_cols
+  demand_levels <- value_cols
   
   # Guardrails (regional format expects *.region columns)
   required_cols <- c("GCAM_region_ID", "year", "iteration", "gcam-consumer",
@@ -2329,10 +2374,7 @@ plot_regional_uncertainty_decomposition <- function(
     stop("plot_regional_uncertainty_decomposition(): missing columns in demand_full: ",
          paste(missing_cols, collapse = ", "))
   }
-  
-  demand_cols   <- c("Qs.region", "Qn.region", "Qtot.region")
-  demand_levels <- c("Qs.region", "Qn.region", "Qtot.region")
-  
+
   # define minimum year for x-axis as largest year divisible by 5 that is <= base year
   min_demand_yr <- min(demand_full$year, na.rm = TRUE)
   min_plot_yr <- min_demand_yr - (min_demand_yr %% 5)
@@ -2412,7 +2454,12 @@ plot_regional_uncertainty_decomposition <- function(
   )
   
   # Convert to differences relative to ML (ML becomes zero)
-  out <- make_relative_to_ml(out, ml_scenario_name = scen_ml_name)
+  out <- make_relative_to_ml(out, ml_scenario_name = scen_ml_name) %>%
+    mutate(
+      demand_type = factor(as.character(demand_type),
+                           levels = value_cols,
+                           labels = value_names)
+    )
   
   if (return_data) return(out)
   
@@ -2474,9 +2521,10 @@ build_scatter_pair_data <- function(
     return(NULL)
   }
   
-  stopifnot(length(value_cols) == 2, length(value_names) == 2)
+  stopifnot(length(value_cols) >= 1, length(value_cols) == length(value_names))
   
   reg_num_int <- as.integer(reg_num)
+  use_consumer <- !all(grepl("\\.region$", value_cols))
   
   filter_one <- function(df) {
     
@@ -2486,7 +2534,7 @@ build_scatter_pair_data <- function(
       ) %>%
       filter(.data[[region_col]] == reg_num_int)
     
-    if (!is.null(consumer_group) && consumer_col %in% names(out)) {
+    if (use_consumer && !is.null(consumer_group) && consumer_col %in% names(out)) {
       out <- out %>%
         filter(.data[[consumer_col]] == consumer_group)
     }
@@ -2502,12 +2550,20 @@ build_scatter_pair_data <- function(
   }
   
   join_keys <- c(region_col, year_col)
-  if (consumer_col %in% names(gcam_sub) && consumer_col %in% names(amb_sub)) {
+  if (use_consumer && consumer_col %in% names(gcam_sub) && consumer_col %in% names(amb_sub)) {
     join_keys <- c(join_keys, consumer_col)
   }
   
+  # For regional totals, collapse duplicate rows across consumer groups
   gcam_sub <- gcam_sub %>%
     select(all_of(c(join_keys, value_cols))) %>%
+    distinct()
+  
+  amb_sub <- amb_sub %>%
+    select(all_of(c(join_keys, value_cols))) %>%
+    distinct()
+  
+  gcam_sub <- gcam_sub %>%
     pivot_longer(
       cols = all_of(value_cols),
       names_to = "demand_type",
@@ -2515,7 +2571,6 @@ build_scatter_pair_data <- function(
     )
   
   amb_sub <- amb_sub %>%
-    select(all_of(c(join_keys, value_cols))) %>%
     pivot_longer(
       cols = all_of(value_cols),
       names_to = "demand_type",
@@ -2537,11 +2592,10 @@ build_scatter_pair_data <- function(
       scenario_name = scenario_name
     )
   
-  # Preserve decile identity only when requested
-  if (keep_all_consumers && consumer_col %in% names(out)) {
+  if (keep_all_consumers && use_consumer && consumer_col %in% names(out)) {
     out <- out %>%
       mutate(consumer_group = .data[[consumer_col]])
-  } else if (!is.null(consumer_group)) {
+  } else if (use_consumer && !is.null(consumer_group)) {
     out <- out %>%
       mutate(consumer_group = consumer_group)
   } else {
@@ -2582,7 +2636,7 @@ plot_scenario_scatter <- function(
     y_label = "ambrosia"
 ) {
   
-  stopifnot(length(value_cols) == 2, length(value_names) == 2)
+  stopifnot(length(value_cols) >= 1, length(value_cols) == length(value_names))
   
   pair_data <- bind_rows(
     build_scatter_pair_data(
@@ -2674,13 +2728,32 @@ plot_scenario_scatter <- function(
     any(!is.na(pair_data$consumer_group)) &&
     dplyr::n_distinct(pair_data$consumer_group[!is.na(pair_data$consumer_group)]) > 1
   
-  # Nice symmetric limits for 1:1 comparison
-  lims <- range(c(pair_data$x_value, pair_data$y_value), na.rm = TRUE)
+  # Separate x and y limits for each demand_type
+  lims_df <- build_scatter_limits(pair_data)
+  
+  blank_df <- lims_df %>%
+    tidyr::expand_grid(corner = 1:4) %>%
+    mutate(
+      x_value = case_when(
+        corner %in% c(1, 2) ~ x_min,
+        TRUE ~ x_max
+      ),
+      y_value = case_when(
+        corner %in% c(1, 3) ~ y_min,
+        TRUE ~ y_max
+      )
+    ) %>%
+    select(demand_type, x_value, y_value)
   
   gg <- ggplot(
     pair_data,
     aes(x = x_value, y = y_value, color = scenario_name)
   ) +
+    geom_blank(
+      data = blank_df,
+      aes(x = x_value, y = y_value),
+      inherit.aes = FALSE
+    ) +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
     facet_wrap(~ demand_type, ncol = 2, scales = "free") +
     labs(
@@ -2689,8 +2762,7 @@ plot_scenario_scatter <- function(
       color = "Scenario",
       shape = "Consumer group"
     ) +
-    theme_minimal(base_size = 12) +
-    coord_equal(xlim = lims, ylim = lims)
+    theme_minimal(base_size = 12)
   
   if (has_deciles) {
     gg <- gg +
@@ -2729,10 +2801,7 @@ plot_scenario_scatter_pdf <- function(
     mutate(
       demand_type = factor(as.character(demand_type), levels = value_names)
     ) %>%
-    select(-any_of("region"))
-  
-  # Drop rows that cannot be plotted
-  p_all <- p_all %>%
+    select(-any_of("region")) %>%
     filter(
       !is.na(scenario_name),
       !is.na(demand_type),
@@ -2748,12 +2817,54 @@ plot_scenario_scatter_pdf <- function(
     any(!is.na(p_all$consumer_group)) &&
     dplyr::n_distinct(p_all$consumer_group[!is.na(p_all$consumer_group)]) > 1
   
-  lims <- range(c(p_all$x_value, p_all$y_value), na.rm = TRUE)
+  # Keep panel order as scenario rows x demand-type columns
+  p_all <- p_all %>%
+    mutate(
+      demand_type = factor(demand_type, levels = value_names)
+    ) %>%
+    arrange(scenario_name, demand_type) %>%
+    mutate(
+      facet_id = paste(scenario_name, demand_type, sep = "___")
+    )
+  
+  facet_tbl <- p_all %>%
+    distinct(facet_id, scenario_name, demand_type) %>%
+    arrange(scenario_name, demand_type)
+  
+  strip_map <- facet_tbl %>%
+    mutate(
+      strip_label = paste0(scenario_name, "\n", demand_type)
+    ) %>%
+    select(facet_id, strip_label) %>%
+    tibble::deframe()
+  
+  # Shared x/y limits by demand_type across all scenarios
+  type_limits <- build_scatter_limits(p_all)
+  
+  blank_df <- facet_tbl %>%
+    left_join(type_limits, by = "demand_type") %>%
+    tidyr::expand_grid(corner = 1:4) %>%
+    mutate(
+      x_value = case_when(
+        corner %in% c(1, 2) ~ x_min,
+        TRUE ~ x_max
+      ),
+      y_value = case_when(
+        corner %in% c(1, 3) ~ y_min,
+        TRUE ~ y_max
+      )
+    ) %>%
+    select(facet_id, x_value, y_value)
   
   base <- ggplot(
     p_all,
     aes(x = x_value, y = y_value)
   ) +
+    geom_blank(
+      data = blank_df,
+      aes(x = x_value, y = y_value),
+      inherit.aes = FALSE
+    ) +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
     labs(
       x = x_label,
@@ -2763,9 +2874,9 @@ plot_scenario_scatter_pdf <- function(
     theme(
       strip.text = element_text(size = 10),
       legend.position = "bottom",
-      legend.box = "vertical"
-    ) +
-    coord_equal(xlim = lims, ylim = lims)
+      legend.box = "vertical",
+      panel.grid.minor = element_blank()
+    )
   
   if (has_deciles) {
     base <- base +
@@ -2776,17 +2887,28 @@ plot_scenario_scatter_pdf <- function(
       geom_point(alpha = 0.55, size = 0.8)
   }
   
-  p <- base +
-    facet_grid(
-      rows = vars(scenario_name),
-      cols = vars(demand_type),
-      scales = "fixed",
-      drop = FALSE
-    )
+  tmp <- base + ggforce::facet_wrap_paginate(
+    ~ facet_id,
+    ncol = 2,
+    nrow = length(unique(p_all$scenario_name)),
+    scales = "free",
+    labeller = labeller(facet_id = as_labeller(strip_map)),
+    page = 1
+  )
   
-  # Allow interactive testing without writing a PDF
+  n_pg <- ggforce::n_pages(tmp)
+  
   if (is.null(filename)) {
-    return(p)
+    return(
+      base + ggforce::facet_wrap_paginate(
+        ~ facet_id,
+        ncol = 2,
+        nrow = length(unique(p_all$scenario_name)),
+        scales = "free",
+        labeller = labeller(facet_id = as_labeller(strip_map)),
+        page = 1
+      )
+    )
   }
   
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2794,9 +2916,19 @@ plot_scenario_scatter_pdf <- function(
   pdf(file.path(output_dir, filename), width = 8.5, height = 11)
   on.exit(dev.off(), add = TRUE)
   
-  print(p)
+  for (pg in seq_len(n_pg)) {
+    p <- base + ggforce::facet_wrap_paginate(
+      ~ facet_id,
+      ncol = 2,
+      nrow = length(unique(p_all$scenario_name)),
+      scales = "free",
+      labeller = labeller(facet_id = as_labeller(strip_map)),
+      page = pg
+    )
+    print(p)
+  }
   
-  invisible(p)
+  invisible(NULL)
 }
 
 plot_scenario_scatter_decile_pdf <- function(
@@ -2845,20 +2977,59 @@ plot_scenario_scatter_decile_pdf <- function(
     ) %>%
     select(-any_of("region"))
   
-  lims <- range(c(p_all$x_value, p_all$y_value), na.rm = TRUE)
+  if (nrow(p_all) == 0) {
+    stop("plot_scenario_scatter_decile_pdf(): no finite plotting rows remain after filtering.")
+  }
   
-  p <- ggplot(
+  p_all <- p_all %>%
+    mutate(
+      demand_type = factor(demand_type, levels = value_names)
+    ) %>%
+    arrange(scenario_name, demand_type) %>%
+    mutate(
+      facet_id = paste(scenario_name, demand_type, sep = "___")
+    )
+  
+  facet_tbl <- p_all %>%
+    distinct(facet_id, scenario_name, demand_type) %>%
+    arrange(scenario_name, demand_type)
+  
+  strip_map <- facet_tbl %>%
+    mutate(
+      strip_label = paste0(scenario_name, "\n", demand_type)
+    ) %>%
+    select(facet_id, strip_label) %>%
+    tibble::deframe()
+  
+  # Shared x/y limits by demand_type across all scenarios
+  type_limits <- build_scatter_limits(p_all)
+  
+  blank_df <- facet_tbl %>%
+    left_join(type_limits, by = "demand_type") %>%
+    tidyr::expand_grid(corner = 1:4) %>%
+    mutate(
+      x_value = case_when(
+        corner %in% c(1, 2) ~ x_min,
+        TRUE ~ x_max
+      ),
+      y_value = case_when(
+        corner %in% c(1, 3) ~ y_min,
+        TRUE ~ y_max
+      )
+    ) %>%
+    select(facet_id, x_value, y_value)
+  
+  base <- ggplot(
     p_all,
     aes(x = x_value, y = y_value, color = consumer_group)
   ) +
+    geom_blank(
+      data = blank_df,
+      aes(x = x_value, y = y_value),
+      inherit.aes = FALSE
+    ) +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60") +
     geom_point(alpha = 0.55, size = 0.8) +
-    facet_grid(
-      rows = vars(scenario_name),
-      cols = vars(demand_type),
-      scales = "fixed",
-      drop = FALSE
-    ) +
     scale_color_viridis_d(
       option = "viridis",
       begin = 0.10,
@@ -2873,20 +3044,666 @@ plot_scenario_scatter_decile_pdf <- function(
     theme_minimal(base_size = 13) +
     theme(
       strip.text = element_text(size = 10),
-      legend.position = "bottom"
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+  
+  tmp <- base + ggforce::facet_wrap_paginate(
+    ~ facet_id,
+    ncol = 2,
+    nrow = length(unique(p_all$scenario_name)),
+    scales = "free",
+    labeller = labeller(facet_id = as_labeller(strip_map)),
+    page = 1
+  )
+  
+  n_pg <- ggforce::n_pages(tmp)
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  pdf(file.path(output_dir, filename), width = 8.5, height = 11)
+  on.exit(dev.off(), add = TRUE)
+  
+  for (pg in seq_len(n_pg)) {
+    p <- base + ggforce::facet_wrap_paginate(
+      ~ facet_id,
+      ncol = 2,
+      nrow = length(unique(p_all$scenario_name)),
+      scales = "free",
+      labeller = labeller(facet_id = as_labeller(strip_map)),
+      page = pg
+    )
+    print(p)
+  }
+  
+  invisible(NULL)
+}
+
+# Summarize scatter data into "% within X% of GCAM"
+calc_scatter_within_pct <- function(
+    scatter_df,
+    thresholds = c(1, 2, 3, 4, 5, 10, 15),
+    source_label = c("Regional", "Decile")
+) {
+  
+  source_label <- match.arg(source_label)
+  
+  req_cols <- c("x_value", "y_value", "demand_type")
+  missing_cols <- setdiff(req_cols, names(scatter_df))
+  if (length(missing_cols) > 0) {
+    stop("calc_scatter_within_pct(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # Keep finite rows only
+  df <- scatter_df %>%
+    filter(
+      is.finite(x_value),
+      is.finite(y_value),
+      !is.na(demand_type)
+    ) %>%
+    mutate(
+      demand_type = as.character(demand_type),
+      pct_diff = 100 * abs(y_value - x_value) / abs(x_value)
+    ) %>%
+    filter(is.finite(pct_diff))
+  
+  if (nrow(df) == 0) {
+    stop("calc_scatter_within_pct(): no finite percentage differences remain.")
+  }
+  
+  bind_rows(lapply(thresholds, function(th) {
+    df %>%
+      group_by(demand_type) %>%
+      summarise(
+        pct_within = 100 * mean(pct_diff <= th, na.rm = TRUE),
+        n = n(),
+        .groups = "drop"
+      ) %>%
+      mutate(threshold_pct = th)
+  })) %>%
+    mutate(
+      source_type = source_label,
+      curve_label = paste(demand_type, source_label, sep = ", ")
+    ) %>%
+    select(demand_type, source_type, curve_label, threshold_pct, pct_within, n)
+}
+
+# Plot "% within X%" curves for regional + decile scatter results
+plot_scatter_within_pct <- function(
+    scatter_reg,
+    scatter_dec,
+    thresholds = c(1, 2, 3, 4, 5, 10, 15),
+    filename = NULL,
+    output_dir = NULL
+) {
+  
+  sum_reg <- calc_scatter_within_pct(
+    scatter_df = scatter_reg,
+    thresholds = thresholds,
+    source_label = "Regional"
+  )
+  
+  sum_dec <- calc_scatter_within_pct(
+    scatter_df = scatter_dec,
+    thresholds = thresholds,
+    source_label = "Decile"
+  )
+  
+  valid_levels <- c(
+    "Staples, Regional",
+    "Staples, Decile",
+    "Non-staples, Regional",
+    "Non-staples, Decile"
+  )
+  
+  plot_df <- bind_rows(sum_reg, sum_dec) %>%
+    filter(curve_label %in% valid_levels) %>%
+    mutate(
+      curve_label = factor(curve_label, levels = valid_levels)
+    )
+  
+  p <- ggplot(
+    plot_df,
+    aes(
+      x = threshold_pct,
+      y = pct_within,
+      color = curve_label,
+      linetype = curve_label
+    )
+  ) +
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 1.8) +
+    scale_x_continuous(breaks = thresholds) +
+    scale_y_continuous(
+      breaks = scales::pretty_breaks(n = 6)
     ) +
-    coord_equal(xlim = lims, ylim = lims)
+    scale_color_discrete(na.translate = FALSE) +
+    scale_linetype_discrete(na.translate = FALSE) +
+    labs(
+      x = "Interval around GCAM result (%)",
+      y = "Ambrosia results within interval (%)",
+      color = NULL,
+      linetype = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  if (is.null(filename)) {
+    return(p)
+  }
+  
+  if (is.null(output_dir)) {
+    stop("plot_scatter_within_pct(): output_dir must be provided when filename is not NULL.")
+  }
   
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   
   ggsave(
     filename = file.path(output_dir, filename),
     plot = p,
-    width = 8.5,
-    height = 11,
-    units = "in",
-    device = cairo_pdf
+    width = 8,
+    height = 5
   )
   
   invisible(p)
 }
+
+# Summarize scatter data into "% within absolute interval around GCAM"
+calc_scatter_within_abs <- function(
+    scatter_df,
+    thresholds = c(0.01, 0.05, 0.1, 0.2, 0.3),
+    source_label = c("Regional", "Decile")
+) {
+  
+  source_label <- match.arg(source_label)
+  
+  req_cols <- c("x_value", "y_value", "demand_type")
+  missing_cols <- setdiff(req_cols, names(scatter_df))
+  if (length(missing_cols) > 0) {
+    stop("calc_scatter_within_abs(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # Keep finite rows only and compute absolute model difference
+  df <- scatter_df %>%
+    filter(
+      is.finite(x_value),
+      is.finite(y_value),
+      !is.na(demand_type)
+    ) %>%
+    mutate(
+      demand_type = as.character(demand_type),
+      abs_diff = abs(y_value - x_value)
+    ) %>%
+    filter(is.finite(abs_diff))
+  
+  if (nrow(df) == 0) {
+    stop("calc_scatter_within_abs(): no finite absolute differences remain.")
+  }
+  
+  bind_rows(lapply(thresholds, function(th) {
+    df %>%
+      group_by(demand_type) %>%
+      summarise(
+        pct_within = 100 * mean(abs_diff <= th, na.rm = TRUE),
+        n = n(),
+        .groups = "drop"
+      ) %>%
+      mutate(threshold_abs = th)
+  })) %>%
+    mutate(
+      source_type = source_label,
+      curve_label = paste(demand_type, source_label, sep = ", ")
+    ) %>%
+    select(demand_type, source_type, curve_label, threshold_abs, pct_within, n)
+}
+
+# Plot "% within absolute interval" curves for regional + decile scatter results
+plot_scatter_within_abs <- function(
+    scatter_reg,
+    scatter_dec,
+    thresholds = c(0.01, 0.05, 0.1, 0.2, 0.3),
+    filename = NULL,
+    output_dir = NULL
+) {
+  
+  sum_reg <- calc_scatter_within_abs(
+    scatter_df = scatter_reg,
+    thresholds = thresholds,
+    source_label = "Regional"
+  )
+  
+  sum_dec <- calc_scatter_within_abs(
+    scatter_df = scatter_dec,
+    thresholds = thresholds,
+    source_label = "Decile"
+  )
+  
+  valid_levels <- c(
+    "Staples, Regional",
+    "Staples, Decile",
+    "Non-staples, Regional",
+    "Non-staples, Decile"
+  )
+  
+  plot_df <- bind_rows(sum_reg, sum_dec) %>%
+    filter(curve_label %in% valid_levels) %>%
+    mutate(
+      curve_label = factor(curve_label, levels = valid_levels)
+    )
+  
+  p <- ggplot(
+    plot_df,
+    aes(
+      x = threshold_abs,
+      y = pct_within,
+      color = curve_label,
+      linetype = curve_label
+    )
+  ) +
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 1.8) +
+    scale_x_continuous(breaks = thresholds) +
+    scale_y_continuous(
+      breaks = scales::pretty_breaks(n = 6)
+    ) +
+    scale_color_discrete(na.translate = FALSE) +
+    scale_linetype_discrete(na.translate = FALSE) +
+    labs(
+      x = expression(paste("Interval around GCAM (10"^3, " cal/day)")),
+      y = "Ambrosia results within interval (%)",
+      color = NULL,
+      linetype = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  if (is.null(filename)) {
+    return(p)
+  }
+  
+  if (is.null(output_dir)) {
+    stop("plot_scatter_within_abs(): output_dir must be provided when filename is not NULL.")
+  }
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = p,
+    width = 8,
+    height = 5
+  )
+  
+  invisible(p)
+}
+
+# Add pooled source curve, and optionally an extra decile-1 curve
+add_density_source_groups <- function(
+    df,
+    source_label,
+    decile1_label = "Decile 1",
+    decile1_group = "FoodDemand_Group1"
+) {
+  
+  out_main <- df %>%
+    mutate(
+      source_type = source_label,
+      curve_label = paste(demand_type, source_label, sep = ", ")
+    )
+  
+  out_dec1 <- NULL
+  
+  if ("consumer_group" %in% names(df)) {
+    out_dec1 <- df %>%
+      filter(consumer_group == decile1_group) %>%
+      mutate(
+        source_type = decile1_label,
+        curve_label = paste(demand_type, decile1_label, sep = ", ")
+      )
+  }
+  
+  bind_rows(out_main, out_dec1)
+}
+
+# Summarize scatter data into percent differences relative to GCAM
+# pct_diff = 100 * (ambrosia - GCAM) / GCAM
+calc_scatter_pct_diff_density <- function(
+    scatter_df,
+    source_label = c("Regional", "Decile"),
+    denom_floor = 1e-8,
+    clip_pct = NULL,
+    decile1_group = "FoodDemand_Group1"
+) {
+  
+  source_label <- match.arg(source_label)
+  
+  req_cols <- c("x_value", "y_value", "demand_type")
+  missing_cols <- setdiff(req_cols, names(scatter_df))
+  if (length(missing_cols) > 0) {
+    stop("calc_scatter_pct_diff_density(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  df <- scatter_df %>%
+    filter(
+      is.finite(x_value),
+      is.finite(y_value),
+      !is.na(demand_type)
+    ) %>%
+    mutate(
+      demand_type = as.character(demand_type)
+    )
+  
+  if (nrow(df) == 0) {
+    stop("calc_scatter_pct_diff_density(): no finite rows remain after filtering.")
+  }
+  
+  df <- df %>%
+    filter(abs(x_value) > denom_floor) %>%
+    mutate(
+      pct_diff = 100 * (y_value - x_value) / x_value
+    ) %>%
+    filter(is.finite(pct_diff))
+  
+  if (nrow(df) == 0) {
+    stop("calc_scatter_pct_diff_density(): no rows remain after denominator filtering.")
+  }
+  
+  if (!is.null(clip_pct)) {
+    df <- df %>%
+      mutate(
+        pct_diff = pmax(pmin(pct_diff, clip_pct), -clip_pct)
+      )
+  }
+  
+  add_density_source_groups(
+    df = df,
+    source_label = source_label,
+    decile1_group = decile1_group
+  ) %>%
+    select(demand_type, source_type, curve_label, pct_diff)
+}
+
+# Plot density of percent differences for regional + decile scatter results
+plot_scatter_pct_diff_density <- function(
+    scatter_reg,
+    scatter_dec,
+    denom_floor = 1e-8,
+    clip_pct = NULL,
+    x_limits = NULL,
+    filename = NULL,
+    output_dir = NULL
+) {
+  
+  dens_reg <- calc_scatter_pct_diff_density(
+    scatter_df = scatter_reg,
+    source_label = "Regional",
+    denom_floor = denom_floor,
+    clip_pct = clip_pct
+  )
+  
+  dens_dec <- calc_scatter_pct_diff_density(
+    scatter_df = scatter_dec,
+    source_label = "Decile",
+    denom_floor = denom_floor,
+    clip_pct = clip_pct
+  )
+  
+  plot_df <- bind_rows(dens_reg, dens_dec) %>%
+    mutate(
+      curve_label = factor(
+        curve_label,
+        levels = c(
+          "Staples, Regional",
+          "Staples, Decile",
+          "Staples, Decile 1",
+          "Non-staples, Regional",
+          "Non-staples, Decile",
+          "Non-staples, Decile 1"
+        )
+      )
+    )
+  
+  # Color/linetype scheme parallel to your other comparison plots:
+  # staples = orange set, non-staples = blue set
+  color_map <- c(
+    "Staples, Regional"      = "#e6550d",
+    "Staples, Decile"        = lighten_hex("#e6550d", amount = 0.45),
+    "Staples, Decile 1"      = lighten_hex("#e6550d", amount = 0.20),
+    "Non-staples, Regional"  = "#3182bd",
+    "Non-staples, Decile"    = lighten_hex("#3182bd", amount = 0.45),
+    "Non-staples, Decile 1"  = lighten_hex("#3182bd", amount = 0.20)
+  )
+  
+  lty_map <- c(
+    "Staples, Regional"      = "solid",
+    "Staples, Decile"        = "dashed",
+    "Staples, Decile 1"      = "dotdash",
+    "Non-staples, Regional"  = "solid",
+    "Non-staples, Decile"    = "dashed",
+    "Non-staples, Decile 1"  = "dotdash"
+  )
+  
+  p <- ggplot(
+    plot_df,
+    aes(x = pct_diff, color = curve_label, linetype = curve_label)
+  ) +
+    geom_density(linewidth = 1.0, adjust = 1) +
+    geom_vline(xintercept = 0, linetype = "dotted", color = "grey50") +
+    scale_color_manual(values = color_map, drop = FALSE) +
+    scale_linetype_manual(values = lty_map, drop = FALSE) +
+    labs(
+      x = "Difference from GCAM (%)",
+      y = "Density",
+      color = NULL,
+      linetype = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  # Determine symmetric x-axis limits from data if not provided
+  if (is.null(x_limits)) {
+    
+    # Use percentiles to avoid extreme tails dominating the range
+    pct_vals <- plot_df$pct_diff[is.finite(plot_df$pct_diff)]
+    
+    if (length(pct_vals) == 0) {
+      stop("plot_scatter_pct_diff_density(): no finite pct_diff values.")
+    }
+    
+    # Adjustable: 99% central range (change if desired)
+    q <- quantile(abs(pct_vals), probs = 0.99, na.rm = TRUE)
+    
+    max_abs <- as.numeric(q)
+    
+    # Fallback if something degenerate happens
+    if (!is.finite(max_abs) || max_abs <= 0) {
+      max_abs <- max(abs(pct_vals), na.rm = TRUE)
+    }
+    
+    x_limits <- c(-max_abs, max_abs)
+  }
+  
+  p <- p + coord_cartesian(xlim = x_limits)
+  
+  if (is.null(output_dir)) {
+    stop("plot_scatter_pct_diff_density(): output_dir must be provided when filename is not NULL.")
+  }
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = p,
+    width = 8,
+    height = 5
+  )
+  
+  invisible(p)
+}
+
+# Summarize scatter data into absolute differences in demand units
+# diff_value = ambrosia - GCAM
+calc_scatter_abs_diff_density <- function(
+    scatter_df,
+    source_label = c("Regional", "Decile"),
+    decile1_group = "FoodDemand_Group1"
+) {
+  
+  source_label <- match.arg(source_label)
+  
+  req_cols <- c("x_value", "y_value", "demand_type")
+  missing_cols <- setdiff(req_cols, names(scatter_df))
+  if (length(missing_cols) > 0) {
+    stop("calc_scatter_abs_diff_density(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  df <- scatter_df %>%
+    filter(
+      is.finite(x_value),
+      is.finite(y_value),
+      !is.na(demand_type)
+    ) %>%
+    mutate(
+      demand_type = as.character(demand_type),
+      diff_value  = y_value - x_value
+    )
+  
+  if (nrow(df) == 0) {
+    stop("calc_scatter_abs_diff_density(): no finite rows remain after filtering.")
+  }
+  
+  add_density_source_groups(
+    df = df,
+    source_label = source_label,
+    decile1_group = decile1_group
+  ) %>%
+    select(demand_type, source_type, curve_label, diff_value)
+}
+
+# Plot density of absolute differences for regional + decile scatter results
+plot_scatter_abs_diff_density <- function(
+    scatter_reg,
+    scatter_dec,
+    x_limits = NULL,
+    tail_prob = 0.99,
+    filename = NULL,
+    output_dir = NULL
+) {
+  
+  dens_reg <- calc_scatter_abs_diff_density(
+    scatter_df   = scatter_reg,
+    source_label = "Regional"
+  )
+  
+  dens_dec <- calc_scatter_abs_diff_density(
+    scatter_df   = scatter_dec,
+    source_label = "Decile"
+  )
+  
+  plot_df <- bind_rows(dens_reg, dens_dec) %>%
+    mutate(
+      curve_label = factor(
+        curve_label,
+        levels = c(
+          "Staples, Regional",
+          "Staples, Decile",
+          "Staples, Decile 1",
+          "Non-staples, Regional",
+          "Non-staples, Decile",
+          "Non-staples, Decile 1"
+        )
+      )
+    )
+  
+  color_map <- c(
+    "Staples, Regional"      = "#e6550d",
+    "Staples, Decile"        = lighten_hex("#e6550d", amount = 0.45),
+    "Staples, Decile 1"      = lighten_hex("#e6550d", amount = 0.20),
+    "Non-staples, Regional"  = "#3182bd",
+    "Non-staples, Decile"    = lighten_hex("#3182bd", amount = 0.45),
+    "Non-staples, Decile 1"  = lighten_hex("#3182bd", amount = 0.20)
+  )
+  
+  lty_map <- c(
+    "Staples, Regional"      = "solid",
+    "Staples, Decile"        = "dashed",
+    "Staples, Decile 1"      = "dotdash",
+    "Non-staples, Regional"  = "solid",
+    "Non-staples, Decile"    = "dashed",
+    "Non-staples, Decile 1"  = "dotdash"
+  )
+  
+  p <- ggplot(
+    plot_df,
+    aes(x = diff_value, color = curve_label, linetype = curve_label)
+  ) +
+    geom_density(linewidth = 1.0, adjust = 1) +
+    geom_vline(xintercept = 0, linetype = "dotted", color = "grey50") +
+    scale_color_manual(values = color_map, drop = FALSE) +
+    scale_linetype_manual(values = lty_map, drop = FALSE) +
+    labs(
+      x = "Difference from GCAM (10^3 cal/day)",
+      y = "Density",
+      color = NULL,
+      linetype = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      panel.grid.minor = element_blank()
+    )
+  
+  # Data-driven symmetric x-axis if not provided
+  if (is.null(x_limits)) {
+    
+    diff_vals <- plot_df$diff_value[is.finite(plot_df$diff_value)]
+    
+    if (length(diff_vals) == 0) {
+      stop("plot_scatter_abs_diff_density(): no finite diff_value values.")
+    }
+    
+    max_abs <- as.numeric(quantile(abs(diff_vals), probs = tail_prob, na.rm = TRUE))
+    
+    if (!is.finite(max_abs) || max_abs <= 0) {
+      max_abs <- max(abs(diff_vals), na.rm = TRUE)
+    }
+    
+    x_limits <- c(-max_abs, max_abs)
+  }
+  
+  p <- p + coord_cartesian(xlim = x_limits)
+  
+  if (is.null(filename)) {
+    return(p)
+  }
+  
+  if (is.null(output_dir)) {
+    stop("plot_scatter_abs_diff_density(): output_dir must be provided when filename is not NULL.")
+  }
+  
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  ggsave(
+    filename = file.path(output_dir, filename),
+    plot = p,
+    width = 8,
+    height = 5
+  )
+  
+  invisible(p)
+}
+
+

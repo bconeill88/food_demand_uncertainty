@@ -1,18 +1,11 @@
-# calculate and save demand and elasticities from observations -----------------
-# ADD CALC OF OBS FROM HD/LD PARAMS --------------------------------------------
-# ----
-
-
-# TO DO:
-# source functions
-# redo path names to be consistent with project structure
-# change file format to rds for saved files
-# define region list
+# calculate and save demand and elasticities from observations, and plot model
+# vs observations
 
 # load functions
 source("R/common_definitions.R")
 source("R/demand_functions.R")
 source("R/plot_functions_model_vs_obs.R")
+source("R/model_fit_functions.R")
 source("R/install_ambrosia_function.R")
 source("R/init_packages.R")
 
@@ -24,12 +17,18 @@ ensure_package(ggplot2)
 install_ambrosia_once(force_install = FALSE)
 
 # choose whether to recalculate model vs obs demand
-RECALC <- FALSE
+RECALC <- TRUE
 SAVE_CALC <- TRUE
+
+# choose whether to create and save plots and tables
+PLOTS <- FALSE
+TABLES <- TRUE
 
 # define directory for pdf report
 report_dir <- file.path("output", "reports", procdata_dir, procdata_subdir_RefMLgcam)
+output_dir_tables <- file.path("output", "tables")
 dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(output_dir_tables, recursive = TRUE, showWarnings = FALSE)
 
 # define output directory
 output_dir <- file.path("data", "processed", procdata_dir, 
@@ -56,7 +55,23 @@ if (!RECALC) {
   params_global_other <-  read.csv(file.path("data", "processed", procdata_dir, 
                                              procdata_subdir_RefMLgcam, demand_both_subdir,
                                              "params_global_BOTH_Qtot_world.csv"))
-  params_global <- bind_rows(params_global_ML, params_global_other)
+ 
+  # 2017 (Edmonds et al)
+  load(file.path("data", "processed", procdata_dir, param_intervals_dir,
+                 "params_2017.Rdata")) 
+  params_global_ML_2017 <- params_2017 %>%
+    filter(row.names(.) == "ML") %>%
+    mutate(case = "ML 2017", iteration = 2017)
+  
+  # 2021 (Narayan and Walfhoff)
+  load(file.path("data", "processed", procdata_dir, param_intervals_dir,
+                 "params_2021.Rdata")) 
+  params_global_ML_2021 <- params_2021 %>%
+    filter(row.names(.) == "ML") %>%
+    mutate(case = "ML 2021", iteration = 2021)
+  
+  params_global <- bind_rows(params_global_ML, params_global_other, 
+                             params_global_ML_2017, params_global_ML_2021)
   
   # get regional parameter sets
   params_FE_ML <- readRDS(file.path("data", "processed", procdata_dir, param_intervals_dir,
@@ -66,7 +81,12 @@ if (!RECALC) {
   params_FE_other <-  read.csv(file.path("data", "processed", procdata_dir, 
                                          procdata_subdir_RefMLgcam, demand_both_subdir,
                                          "params_FE_BOTH_Qtot_world.csv"))
-  params_FE <- bind_rows(params_FE_ML, params_FE_other)
+  params_FE_2017 <- params_FE_ML %>% 
+    mutate(staples_FE = 0, iteration = 2017)
+  params_FE_2021 <- params_FE_ML %>% 
+    mutate(staples_FE = 0, iteration = 2021)
+  params_FE <- bind_rows(params_FE_ML, params_FE_other,
+                         params_FE_2017, params_FE_2021)
   
   # define regions to run over
   reg_list <- obs_data$GCAM_region_ID %>% unique() %>% sort()
@@ -110,21 +130,38 @@ if (!RECALC) {
   }
 }
 
-# create PDF of scatterplots of model vs obs demand for each case a food type
-plot_model_vs_obs_scatter_rows_pdf(
-  demand_model_vs_obs,
-  output_dir = report_dir,
-  filename = "model_vs_obs_scatter_demand.pdf",
-  case_col = "case"
-)
+if(PLOTS) {
+  
+  # create PDF of scatterplots of model vs obs demand for each case a food type
+  plot_model_vs_obs_scatter_rows_pdf(
+    demand_model_vs_obs,
+    output_dir = report_dir,
+    filename = "model_vs_obs_scatter_demand.pdf",
+    case_col = "case"
+  )
+  
+  # create PDF of scatterplots of model vs obs demand for each case a food type
+  plot_income_vs_demand_rows_pdf(
+    demand_model_vs_obs,
+    output_dir = report_dir,
+    filename   = "model_vs_obs_income_vs_demand.pdf",
+    rows_per_page = 3,
+    income_col = "Y.region",
+    model_color = "#e6550d"
+  )
+}
 
-# create PDF of scatterplots of model vs obs demand for each case a food type
-plot_income_vs_demand_rows_pdf(
-  demand_model_vs_obs,
-  output_dir = report_dir,
-  filename   = "model_vs_obs_income_vs_demand.pdf",
-  rows_per_page = 3,
-  income_col = "Y.region",
-  # if you already have a set-1 orange constant in your plotting code, pass it here:
-  model_color = "#E69F00"
-)
+if (TABLES) {
+  
+  # Check data quality first (all three)
+  check_model_vs_obs_inputs(demand_model_vs_obs)
+  
+  # All three demand types
+  metrics_obs <- calc_model_vs_obs_metrics(
+    demand_model_vs_obs = demand_model_vs_obs,
+    group_cols = c("case"),
+    output_dir_tables = output_dir_tables
+  )
+}
+
+head(metrics_obs)
