@@ -211,48 +211,61 @@ save_case_and_ml_projections <- function(iter_table,
   message("Saving projections for identified parameters and ML")
   
   iter_world <- iter_table %>% filter(ID == 33)
-  if (nrow(iter_world) != 1) {
-    stop("Expected exactly one row with ID == 33 (World).")
-  }
+  if (nrow(iter_world) != 1) stop("Expected exactly one row with ID == 33 (World).")
   
-  # ---- Save projections for identified parameter cases (world iterations) ----
-  for (cc in case_cols) {
-    
-    it <- iter_world[[cc]][1]
-    
-    if (is.na(it)) {
-      message("No iteration identified for case ", cc)
-      next
-    }
-    
-    scen_results <- map_dfr(reg_list, function(r) {
-      readRDS(file.path(read_dir, paste0("demand_R", r, scen_case, ".RDS"))) %>%
-        filter(iteration == it)
-    })
-    
-    # file name strips "_Qtot" to match older naming in downstream scripts
-    cc_clean <- gsub("_Qtot$", "", cc)
-    
-    saveRDS(
-      scen_results,
-      file.path(results_path, paste0(file_prefix, cc_clean, "params.RDS"))
-    )
-  }
+  # ---- Map case column -> iteration (world row) ----
+  case_to_iter <- iter_world %>%
+    select(all_of(case_cols)) %>%
+    slice(1)
   
-  # ---- Save ML projections in same form as other scenario results ----
+  iters_cases <- case_to_iter %>%
+    unlist(use.names = TRUE) %>%
+    as.integer()
+  
+  # ---- Identify ML iteration once ----
   iter_ML <- readRDS(
     file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")
   ) %>%
     filter(measure == "ML") %>%
     pull(iteration)
   
-  scen_ml <- map_dfr(reg_list, function(r) {
+  if (length(iter_ML) != 1 || is.na(iter_ML)) {
+    stop("Expected exactly one non-NA ML iteration.")
+  }
+  
+  # ---- Read each region file, filter to all iterations we will save ----
+  iters_needed <- unique(na.omit(c(iters_cases, iter_ML)))
+  
+  message("  Reading regional files once and filtering to needed iterations")
+  scen_needed <- map_dfr(reg_list, function(r) {
     readRDS(file.path(read_dir, paste0("demand_R", r, scen_case, ".RDS"))) %>%
-      filter(iteration == iter_ML)
+      filter(iteration %in% iters_needed)
   })
   
+  # Split for extraction
+  scen_by_iter <- split(scen_needed, scen_needed$iteration)
+  
+  # ---- Save projections for identified parameter cases ----
+  for (cc in case_cols) {
+    
+    it <- iters_cases[[cc]]
+    
+    if (is.na(it)) {
+      message("  No iteration identified for case ", cc)
+      next
+    }
+    
+    cc_clean <- gsub("_Qtot$", "", cc)
+    
+    saveRDS(
+      scen_by_iter[[as.character(it)]],
+      file.path(results_path, paste0(file_prefix, cc_clean, "params.RDS"))
+    )
+  }
+  
+  # ---- Save ML projections ----
   saveRDS(
-    scen_ml,
+    scen_by_iter[[as.character(iter_ML)]],
     file.path(results_path, paste0(ml_file_prefix, "MLparams.RDS"))
   )
 }
@@ -298,8 +311,10 @@ both_cfg <- list(
   combo_names = c("HD_HPR", "HD_LPR", "LD_HPR", "LD_LPR"),
   
   abs_scen_case  = "_ens_bc",
-  abs_dir = file.path("data", "processed", procdata_dir,
-                      procdata_subdir_RefMLgcam, demand_abs_subdir),
+  abs_dir_ML = file.path("data", "processed", procdata_dir,
+                         procdata_subdir_RefMLgcam, demand_abs_subdir),
+  abs_dir_HP = file.path("data", "processed", procdata_dir,
+                         procdata_subdir_RefMLHPgcam, demand_abs_subdir),
   
   diff_scen_case = "_diffs_ens_bc",
   diff_dir = file.path("data", "processed", procdata_dir,
@@ -540,48 +555,88 @@ if (both_cfg$enabled) {
     output_stub    = "BOTH"
   )
   
-  # Save projections (existing logic), plus save ML projections in same folders
+  # Save projections (refactored: read each region file once per source dir)
   message("Saving projections for identified parameters")
   
+  # if running this section alone, include these two lines
+  # combo_col_names <- paste0(both_cfg$combo_names, "_Qtot")
+  # iter_table <- read.csv(file.path(both_cfg$results_path, "iter_table_BOTH_Qtot.csv"))
+  
   iter_world <- iter_table %>% filter(ID == 33)
-  if (nrow(iter_world) != 1) {
-    stop("Expected exactly one row with ID == 33 (World).")
-  }
+  if (nrow(iter_world) != 1) stop("Expected exactly one row with ID == 33 (World).")
   
   scen_out_abs  <- file.path(both_cfg$results_path, "scenarios_abs")
   scen_out_diff <- file.path(both_cfg$results_path, "scenarios_diff")
   dir.create(scen_out_abs,  recursive = TRUE, showWarnings = FALSE)
   dir.create(scen_out_diff, recursive = TRUE, showWarnings = FALSE)
   
+  # ---- case iterations needed ----
+  iters_cases <- iter_world %>%
+    select(all_of(combo_col_names)) %>%
+    slice(1) %>%
+    unlist(use.names = TRUE) %>%
+    as.integer()
+  
+  # ---- ML iteration once ----
+  iter_ML <- readRDS(
+    file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")
+  ) %>%
+    filter(measure == "ML") %>%
+    pull(iteration)
+  
+  if (length(iter_ML) != 1 || is.na(iter_ML)) stop("Expected exactly one non-NA ML iteration.")
+  
+  iters_needed <- unique(na.omit(c(iters_cases, iter_ML)))
+  
+  # Helper: read each region once for a given directory + scen_case, filter to iters_needed, split by iteration
+  read_needed_split <- function(dir_path, scen_case) {
+    message("  Reading once from: ", dir_path)
+    df <- map_dfr(reg_list, function(r) {
+      readRDS(file.path(dir_path, paste0("demand_R", r, scen_case, ".RDS"))) %>%
+        filter(iteration %in% iters_needed)
+    })
+    split(df, df$iteration)
+  }
+  
+  # ---- Build splits once per source ----
+  abs_ML_by_iter <- read_needed_split(both_cfg$abs_dir_ML, both_cfg$abs_scen_case)
+  abs_HP_by_iter <- read_needed_split(both_cfg$abs_dir_HP, both_cfg$abs_scen_case)
+  diff_by_iter   <- read_needed_split(both_cfg$diff_dir,   both_cfg$diff_scen_case)
+  
+  # Optional quick check (warn if any needed iteration missing in any source)
+  missing_abs_ML <- setdiff(as.character(iters_needed), names(abs_ML_by_iter))
+  missing_abs_HP <- setdiff(as.character(iters_needed), names(abs_HP_by_iter))
+  missing_diff   <- setdiff(as.character(iters_needed), names(diff_by_iter))
+  
+  if (length(missing_abs_ML) > 0) message("  WARNING: abs_dir_ML missing iterations: ", paste(missing_abs_ML, collapse = ", "))
+  if (length(missing_abs_HP) > 0) message("  WARNING: abs_dir_HP missing iterations: ", paste(missing_abs_HP, collapse = ", "))
+  if (length(missing_diff)   > 0) message("  WARNING: diff_dir   missing iterations: ", paste(missing_diff, collapse = ", "))
+  
+  # ---- Save case projections ----
   for (cc in combo_col_names) {
     
-    it <- iter_world[[cc]][1]
+    it <- iters_cases[[cc]]
     
     if (is.na(it)) {
       message("No iteration identified for case ", cc)
       next
     }
     
-    # ABS demand levels (read from abs_dir, write to BOTH dir)
-    scen_abs <- map_dfr(reg_list, function(r) {
-      readRDS(file.path(both_cfg$abs_dir, paste0("demand_R", r, both_cfg$abs_scen_case, ".RDS"))) %>%
-        filter(iteration == it)
-    })
+    it_chr <- as.character(it)
     
     saveRDS(
-      scen_abs,
-      file.path(scen_out_abs, paste0("demand_allregions_", cc, ".RDS"))
+      abs_ML_by_iter[[it_chr]],
+      file.path(scen_out_abs, paste0("demand_allregions_Ref_ML_gcam_", cc, ".RDS"))
     )
     
-    # DIFF demand responses (read from diff_dir, write to BOTH dir)
-    scen_diff <- map_dfr(reg_list, function(r) {
-      readRDS(file.path(both_cfg$diff_dir, paste0("demand_R", r, both_cfg$diff_scen_case, ".RDS"))) %>%
-        filter(iteration == it)
-    })
+    saveRDS(
+      abs_HP_by_iter[[it_chr]],
+      file.path(scen_out_abs, paste0("demand_allregions_Ref_ML_HP_gcam_", cc, ".RDS"))
+    )
     
     saveRDS(
-      scen_diff,
-      file.path(scen_out_diff, paste0("demand_diffs_allregions_", cc, ".RDS"))
+      diff_by_iter[[it_chr]],
+      file.path(scen_out_diff, paste0("demand_diffs_allregions_Ref_ML_gcam", cc, ".RDS"))
     )
   }
   
@@ -589,28 +644,21 @@ if (both_cfg$enabled) {
   # ALSO save ML projections for BOTH case (abs + diff), same "scenarios_*" folders
   # --------------------------------------------------------------------------
   
-  iter_ML <- readRDS(
-    file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")
-  ) %>%
-    filter(measure == "ML") %>%
-    pull(iteration)
+  iter_ML_chr <- as.character(iter_ML)
   
-  scen_ml_abs <- map_dfr(reg_list, function(r) {
-    readRDS(file.path(both_cfg$abs_dir, paste0("demand_R", r, both_cfg$abs_scen_case, ".RDS"))) %>%
-      filter(iteration == iter_ML)
-  })
   saveRDS(
-    scen_ml_abs,
-    file.path(scen_out_abs, "demand_allregions_MLparams.RDS")
+    abs_ML_by_iter[[iter_ML_chr]],
+    file.path(scen_out_abs, "demand_allregions_Ref_ML_gcam_MLparams.RDS")
   )
   
-  scen_ml_diff <- map_dfr(reg_list, function(r) {
-    readRDS(file.path(both_cfg$diff_dir, paste0("demand_R", r, both_cfg$diff_scen_case, ".RDS"))) %>%
-      filter(iteration == iter_ML)
-  })
   saveRDS(
-    scen_ml_diff,
-    file.path(scen_out_diff, "demand_diffs_allregions_MLparams.RDS")
+    abs_HP_by_iter[[iter_ML_chr]],
+    file.path(scen_out_abs, "demand_allregions_Ref_ML_HP_gcam_MLparams.RDS")
+  )
+  
+  saveRDS(
+    diff_by_iter[[iter_ML_chr]],
+    file.path(scen_out_diff, "demand_diffs_allregions_Ref_ML_gcam_MLparams.RDS")
   )
 }
 
