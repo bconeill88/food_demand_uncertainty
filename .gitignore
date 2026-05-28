@@ -14,3 +14,6 @@ scripts/03c_calculate_demand_GCAM_MLscale.R
 rename_files.sh
 strip_chars.sh
 .Rhistory
+.positai
+.RData
+.RData
