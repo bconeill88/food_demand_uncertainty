@@ -44,16 +44,33 @@ p_trace_FE <-
 #------------------------------------------------------------------------------
 
 # Global parameters
-param_cols_global <- c("As","ks","eps1n","xi.ss","xi.nn",
-                       "xi.cross","lambda","An","Pm")
-
+param_cols_global <- c("An", "As", "Pm", "eps1n", "ks", "lambda", 
+                       "xi.ss","xi.nn", "xi.cross")
+param_names_global <- c("As", "An", "Pm", "nu", "kappa", "lambda",
+                        "g.ss","g.nn", "g.cross")
+  
 ml_vals_global <- params_ML_intervals_global %>%
   filter(measure == "ML") %>%
   select(all_of(param_cols_global))
 
+# 2017 (Edmonds et al)
+load(file.path("data", "processed", procdata_dir, param_intervals_dir,
+               "params_2017.Rdata")) 
+params_2017 <- params_2017 %>%
+  filter(row.names(.) == "ML") %>%
+  select(As:pnscl)
+
+# 2021 (Narayan and Walfhoff)
+load(file.path("data", "processed", procdata_dir, param_intervals_dir,
+               "params_2021.Rdata")) 
+params_2021 <- params_2021 %>%
+  filter(row.names(.) == "ML") %>%
+  select(As:pnscl)
+
 p_dens_global <- make_density_plots_global(
   paramdata    = param_data_global_clean_sub,
   param_cols   = param_cols_global,
+  param_names  = param_names_global,
   vline_values = list(ml_vals_global),
   vline_labels = list("ML"),
   vline_colors   = c("ML" = "red"),
@@ -64,6 +81,20 @@ p_dens_global <- make_density_plots_global(
 )
 
 plot(p_dens_global)
+
+p_dens_global_noML <- make_density_plots_global(
+  paramdata    = param_data_global_clean_sub,
+  param_cols   = param_cols_global,
+  # vline_values = list(ml_vals_global),
+  # vline_labels = list("ML"),
+  # vline_colors   = c("ML" = "red"),
+  title        = "Global parameter posteriors",
+  subtitle     = "",
+  line_width   = 0.7,
+  font_size    = 8
+)
+
+plot(p_dens_global_noML)
 
 # Regional fixed-effect parameters (staples_FE); create a list of two plots, 16
 # regions each
@@ -124,14 +155,17 @@ print(p_trace_global)
 if (length(p_trace_FE) >= 1) print(p_trace_FE[[1]])
 if (length(p_trace_FE) >= 2) print(p_trace_FE[[2]])
 
-## Page 4 - global parameter densities
+## Page 4 - global parameter densities without ML line
+print(p_dens_global_noML)
+
+## Page 5 - global parameter densities with ML line
 print(p_dens_global)
 
-## Pages 5, 6 - FE parameter densities
+## Pages 6, 7 - FE parameter densities
 if (length(p_dens_FE) >= 1) print(p_dens_FE[[1]])
 if (length(p_dens_FE) >= 2) print(p_dens_FE[[2]])
 
-## Page 7 - FE parameter values
+## Page 8 - FE parameter values
 print(p_FE_vals)
 
 dev.off()
