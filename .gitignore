@@ -2,7 +2,8 @@
 /output
 .Rproj.user
 *.txt
-.Rhistory
 .positai
+.Rhistory
 .RData
-
+scripts/.Rhistory
+scripts/.RData
