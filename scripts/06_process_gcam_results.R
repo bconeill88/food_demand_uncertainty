@@ -1,10 +1,19 @@
 # Produce GCAM scenario outcomes suitable for use as input to ambrosia and for
 # comparison with ambrosia results.
+#
+# Note that GCAM results for the HD/LD_HPR/LPR scenarios will not be available until
+# the ambrosia analysis through step 05 (param_scenario_discovery) is completed,
+# which identifies the parameter sets for those scenarios. However, the ML parameter
+# set is available after step 02 (parameter_stats), and this code needs to be run
+# just for that scenario in order to produce ambrosia inputs to continue with the
+# analysis is steps 03 and beyond. This is not great design but I can split this
+# script into two later on.
+#
 # Reads GCAM results from rgcam output (in data/raw/final_rgcam_outputs) provided 
 # by Kanishka, extracts needed variables, calculates per capita income by decile 
 # (since direct GCAM output for this variable is incorrect) from separate data on 
 # regional decile income shares, calculates consumption shares and regional demand, 
-# and saves result as a dataframe (in data/processed/<procdata_dir>/results_gcam)
+# and saves result as a dataframe (in data/processed/<procdata_dir>/results_gcam).
 
 # reminder this is what works to install rgcam, not the github instructions
 # need Rtools installed first
@@ -120,6 +129,3 @@ walk(scen_string_list, ~ subtract_gcam_demand_dfs(
 )
 
 }
-
-# read a results file to check
-# tmp <- readRDS(file.path(out_dir, "gcamoutput_diffs_Ref_LD_HPR_HP.RDS"))

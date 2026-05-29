@@ -1,17 +1,8 @@
-# Functions for creating various plots of uncertainty in parameters,
-# currently bringing in and updating code from scripts/uncertainty_figures.R
+# Functions for creating various plots of uncertainty in parameters.
 
 # Parameter trace plots
 
 # Plot traces for 9 global variables
-# make_trace_plots_global <- function(param_data, title   = NULL, subtitle = NULL,) {
-#   param_colnames <- select(param_data, c('As':'Pm')) %>% colnames()
-#   param_data_long <- gather(param_data, key="parameter", value="value", param_colnames)
-#   ggplot(param_data_long, aes(x=iteration, y=value)) +
-#     geom_point(size=0.3) +
-#     facet_wrap(~parameter, ncol=3, scales = "free") +
-#     ggtitle(title, subtitle = subtitle)
-# }
 make_trace_plots_global <- function(
     param_data,
     title     = NULL,

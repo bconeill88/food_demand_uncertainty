@@ -1,97 +1,160 @@
 # Food Demand Uncertainty Analysis
 
-This project analyzes uncertainty in projected food demand across global GCAM regions using an ensemble of demand function parameter combinations from an MCMC estimation routine. The analysis includes the projection of regional demand for staples and non-staples using the ambrosia food demand package, the identification of specific parameter sets that can span uncertainty in both demand and in the response of demand to price changes, and the generation of plots illustrating results.
+## Overview
 
-## Contents
+This repository contains code used to analyze uncertainty in projections of food demand using:
 
--   `R/init_packages.R`: Loads and installs required R packages.
--   `R/parameters_for_intervals_functions.R`: Contains helper functions for plotting demand projections.
--   `main_script.R` (this file): Reads processed demand data, summarizes iteration frequencies, generates tables and plots for regional projections, and exports results to PNG and PDF.
+- the *ambrosia* food demand package
 
-## Project Structure
+- income and price assumptions from GCAM scenario output
 
-```         
+- an ensemble of food demand parameters from a Markov Chain Monte Carlo (MCMC) estimation based on historical observations of food demand, income, and prices.
+
+The primary outputs are an ensemble of future staples, non-staples, and total food demand projections across 32 GCAM regions and 10 income groups per region. These ensembles are used to characterize food demand uncertainty and to identify a small number of parameter sets that represent that uncertainty that can be used in GCAM for scenario analysis.
+
+------------------------------------------------------------------------
+
+## Repository Structure
+
+``` text
 data/
-  └── raw/                        # Region mappings and subdirectories
-    └── mcmc_params/              # MCMC ensemble outputs
-    └── obs_data/                 # Observational data
-    └── final_rgcam_outputs/      # GCAM scenario output tables from rgcam
-  └── processed/<mcmc_version>/   # Analysis results
-      <scen_name>/<base_year>/
-      <run_name>/<output_type/
-      
-scripts/                          # Main scripts
+  raw/            Input data files
+  processed/      Intermediate and final processed data
 
-R/                                # Helper functions
+R/
+  Helper functions
+
+scripts/
+  Main analysis scripts
 
 output/
-  └── figures/<run_name>/<scen>/  # Generated individual tables and plots
-  └── reports/                    # Generated pdfs of multiple plots
+  reports/        PDF reports containing sets of figures
+  tables/         Summary tables and metrics
 ```
 
-## Key Features
+Directory names and file locations are defined centrally in `R/common_definitions.R`.
 
--   **Sample Ensemble Visualization**: Plots a subset of the demand projection ensemble for each region.
--   **Max Iteration Identification**: Identifies the iterations most frequently associated with high and low demand for each region and globally.
--   **Comparative Line Plots**: Shows regional and global max iteration trajectories for each demand type (Qs, Qn, Qtot).
--   **PDF Output**: Generates multi-panel PDF with fixed row-column layout and dummy panels to preserve aspect ratio.
--   **Tables**: Summarizes frequencies and max iteration numbers for each region and demand type.
+------------------------------------------------------------------------
 
-## Example Output
+## Data Requirements
 
--   `demand_R2_ens_bc.png`: Single-region plot (region 2) comparing sample ensemble and max iteration trajectories.
--   `demand_all_regions_ens_bc.pdf`: Multipanel PDF of projections across multiple regions.
--   `table_max_frequencies_all_regions.png`: Table of most frequent iterations by region and scenario.
--   `table_max_iterations_all_regions.png`: Table of iteration numbers at max frequency.
+The analysis expects the following input files in `data/raw/` and its subdirectories.
 
-## Running the Code
+| File | Location | Purpose |
+|----|----|----|
+| `ambrosia_9_params_23Nov2025.dat` | `data/raw/mcmc_params/` | Global parameter ensemble from MCMC estimation |
+| `FE_params_23Nov25.dat` | `data/raw/mcmc_params/` | Regional fixed-effect parameter ensemble from MCMC estimation |
+| `Processed_group_data_13Jan25.csv` | `data/raw/obs_data/` | Historical observations of food demand, income, and prices used for estimation and validation |
+| `GCAM_region_ID_mapping.RDS` | `data/raw/` | Mapping between GCAM region names and numeric region identifiers |
+| `income_dist_by2021.csv` | `data/raw/final_rgcam_outputs/tables_7mar26/` | Income distribution assumptions used to construct decile-level results |
+| GCAM output tables | `data/raw/final_rgcam_outputs/tables_7mar26/` | Regional income, food price, food demand, land-use, water-use, and related GCAM outputs processed by `06_process_gcam_results.R` |
 
-1.  **Dependencies**\
-    Ensure R packages are installed. These are automatically handled via `init_packages.R`.
+## Analysis Workflow
 
-2.  **Run main script**\
-    Execute the script with or without a region filter:
+### 01_clean_param_data.R
 
-    ``` bash
-    Rscript main_script.R            # Runs all regions
-    Rscript main_script.R 5          # Runs only region 5
-    ```
+Reads raw MCMC parameter ensembles and observational data, performs cleaning and filtering, and creates analysis-ready datasets.
 
-3.  **Interactive mode**\
-    If running in RStudio or another interactive session, the tables will be saved as `.png` files. Otherwise, `.rds` files are saved.
+### 02_parameter_stats.R
 
-## Inputs
+Identifies maximum-likelihood (ML) parameter values and independent parameter confidence intervals.
 
--   **Region Ensemble Files**: Files named `demand_R<region>_ens_bc.RDS`, containing demand simulations for each region.
--   **Max Frequency Table**: `max_iter_frequencies_ens_bc.RDS`, summarizing the most frequent iterations.
--   **Region Names**: `GCAM_region_ID_mapping.Rdata`, mapping region numbers to names.
+### 03_calculate_demand.R
 
-## Outputs
+Runs the ambrosia demand model using MCMC parameter ensembles and GCAM income and price trajectories. Produces demand and elasticity projections.
 
--   PDF and PNG files stored in `output/figures/<procdata_dir>/<scen>/`.
+### 04_calculate_demand_diffs.R
 
-## Scripts Overview
+Calculates differences between ensembles of demand projections, comparing reference and high-price scenarios.
 
-| Script | Purpose |
-|----------------------------------|--------------------------------------|
-| `init_packages.R` | Load or install required packages. |
-| `parameters_for_intervals_functions.R` | Defines helper functions for sampling and plotting. |
-| `main_script.R` | Orchestrates data input, summary, and plot generation. |
+### 05_param_scenario_discovery.R
 
-## To Do / Fill In Later
+Identifies parameter sets that best represent high or low demand (HD, LD) across regions and time steps, or high or low responses to price changes (HPR, LPR), or combinations of both. Also identifies the ambrosia demand projections associated with those parameter sets.
 
--   [ ] **Model Description**: Overview of the demand model and its structure.
--   [ ] **Parameter Estimation**: Description of how the MCMC estimation is performed.
--   [ ] **Assumptions**: Assumptions underlying the scenarios and parameter sets.
--   [ ] **Data Sources**: Description and citations for input data sources.
--   [ ] **Uncertainty Interpretation**: Guidance on how to interpret the ensemble results.
--   [ ] **Validation**: Any model validation steps conducted.
--   [ ] **Future Work**: Planned extensions or applications.
+### 06_process_gcam_results.R
 
-## License
+Processes GCAM outputs from scenarios based on the identified parameter sets. These results are used for comparison to the ambrosia demand uncertainty ranges, and in some cases (particularly for ML parameters) as inputs to ambrosia runs.
 
-*TBD*
+### 07_model_vs_obs.R
 
-## Contact
+Compares GCAM model predictions against historical observations and produces fit metrics and diagnostic plots.
 
-For questions about this project, contact [Your Name or Institution].
+------------------------------------------------------------------------
+
+## Supporting Scripts
+
+### plot_parameter_uncertainty.R
+
+Produces parameter posterior and uncertainty visualizations.
+
+### plot_stylized_demand.R
+
+Produces stylized demand and elasticity comparisons across alternative parameterizations.
+
+### plot_main_results.R
+
+Produces the primary figures used in reporting results and in the manuscript.
+
+### create_max_iter_table.R
+
+Creates a .csv version of a summary tables describing parameter iterations most frequently associated with extreme outcomes, for use in the manuscript.
+
+------------------------------------------------------------------------
+
+## Main Scenario Types
+
+| Scenario | Description                       |
+|----------|-----------------------------------|
+| ML       | Maximum-likelihood parameter set  |
+| HD       | High-demand parameter set         |
+| LD       | Low-demand parameter set          |
+| HPR      | High price-response parameter set |
+| LPR      | Low price-response parameter set  |
+
+Combined scenarios include:
+
+- HD-HPR
+- HD-LPR
+- LD-HPR
+- LD-LPR
+
+------------------------------------------------------------------------
+
+## External Dependencies
+
+Key dependencies include:
+
+- R
+- tidyverse
+- ggplot2
+- patchwork
+- ggforce
+- ggh4x
+- progressr
+- rgcam
+- ambrosia
+
+------------------------------------------------------------------------
+
+## Reproducing the Analysis
+
+Typical workflow:
+
+1.  Run `01_clean_param_data.R`
+2.  Run `02_parameter_stats.R` to identify and save the maximum likelihood (ML) parameter set
+3.  Run `06_process_gcam_results.R` just for GCAM results employing the ML parameter set
+4.  Run `03_calculate_demand.R` to generate all necessary ambrosia demand projections
+5.  Run `04_calculate_demand_diffs.R` to calculate differences in demand between the Reference scenario (i.e., income and prices) and the High Price Conditions scenario
+6.  Run `05_param_scenario_discovery.R` to identify parameter sets that best represent high/low demand and/or high/low price response
+7.  Run `06_process_gcam_results.R` for GCAM results employing the identified parameter sets
+8.  Run:
+    - `07_model_vs_obs.R` to calculate and plot comparison of model predictions versus observations
+    - `plot_parameter_uncertainty.R` , `plot_stylized_demand.R` , and `plot_main_results.R` to visualize outcomes
+
+Depending on configuration settings in `common_definitions.R`, scripts may be run for selected regions or all 32 GCAM regions.
+
+------------------------------------------------------------------------
+
+## Manuscript figures
+
+Figures for the manuscript are created by selecting subsets of results from the pdf reports generated by the plot\_\*.R scripts.

@@ -1,3 +1,4 @@
+# Definitions common across multiple scripts or to set up specific runs
 
 # Directories and file names for Raw MCMC and observational data ---------------
 
@@ -7,10 +8,6 @@ mcmc_dir <- "mcmc_params"
 obs_dir <- "obs_data"
 
 # names of raw MCMC parameter results files to use
-# param_data_global_file <- "ambrosia_9_params_24Jan25.dat"
-# param_data_FE_file <- "FE_paramsJan2425.dat"
-# param_data_global_file <- "ambrosia_9_params_16Nov25.dat"
-# param_data_FE_file <- "FE_params_16Nov25.dat"
 param_data_global_file <- "ambrosia_9_params_23Nov2025.dat"
 param_data_FE_file <- "FE_params_23Nov25.dat"
 
@@ -22,7 +19,6 @@ obs_data_file <- "Processed_group_data_13Jan25.csv"
 # define sub-directories of data/raw where GCAM output can be found
 gcam_rawdata_dir <- "final_rgcam_outputs"
 gcam_rawdata_subdir <- "tables_7mar26"
-# gcam_rawdata_subdir <- "tables_1dec25" # previous version, with by2015
 income_dist_baseyr_file <- "income_dist_by2021.csv"
 GCAM_region_ID_mapping <- readRDS(file.path("data", "raw", "GCAM_region_ID_mapping.RDS"))
 
@@ -32,7 +28,6 @@ GCAM_region_ID_mapping <- readRDS(file.path("data", "raw", "GCAM_region_ID_mappi
 procdata_dir <- "mcmc_23nov25"
 
 # subdirectory of "procdata_dir" for processed gcam results
-# gcam_results_dir <- "results_gcam_by2015"
 gcam_results_dir <- "results_gcam_by2021"
 
 # subdirectory of "procdata_dir" for MCMC parameter uncertainty intervals
@@ -60,13 +55,6 @@ procdata_subdir_RefMLHPgcam_income <-
 procdata_subdir_RefMLHPgcam_scale <- 
   "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLscale_20260218_123621"
 
-# for base year 2015
-# procdata_subdir_RefMLgcam <- "Ref_ML_gcam/by2015/ens_bc_combined_20251203_070624"
-# procdata_subdir_RefMLgcam_price <- "Ref_ML_gcam/by2015/ens_bc_combined_MLprice_20260119_175954"
-# procdata_subdir_RefMLgcam_income <- "Ref_ML_gcam/by2015/ens_bc_combined_MLincome_20260119_173305"
-# procdata_subdir_RefMLgcam_scale <- "Ref_ML_gcam/by2015/ens_bc_combined_MLscale_20260119_173644"
-# procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/by2015/ens_bc_combined_20251211_024942"
-
 # sub-subdirectories for specific types of results
 demand_abs_subdir <- "abs"
 demand_diffs_subdir <- "diffs_Ref_ML_HP_gcam"
@@ -80,7 +68,7 @@ directories_to_check <- c(
 )
 lapply(directories_to_check, function(dir_path) {
   if (!dir.exists(dir_path)) {
-    dir.create(dir_path, recursive = TRUE) # recursive = TRUE creates parent directories if needed
+    dir.create(dir_path, recursive = TRUE)
     message(paste("Created directory:", dir_path))
   }
 })
@@ -94,10 +82,7 @@ ambrosia_path_pic     <- "/qfs/people/onei736/food_demand/ambrosia"
 # Parameters for data cleaning -------------------------------------------------
 
 # for raw MCMC data files, the initial and final iteration number to use,
-# accounting for the burn in period
-# 24 Jan 2025: 193001 - Inf
-# 16 Nov 2025: 1 - Inf
-# 23 Nov 2025: 69500 - Inf
+# accounting for the burn in period; for results from 23 November 2025
 iter_start <- 69500
 iter_end <- Inf
 
@@ -105,11 +90,9 @@ iter_end <- Inf
 subsample <- 10000
 
 # Parameters for parameter-based uncertainty intervals -------------------------
-# SHOULD THE R SCRIPT HERE BE "DEMAND FOR PARAMETER INTERVALS", WHILE BELOW
-# IT WOULD BE "PARAMETERS FOR DEMAND INTERVALS"?
 
 # confidence interval to use for the parameter uncertainty ranges in 
-# 02_parameter_uncertainty_intervals.R
+# 02_parameter_stats.R
 confinterval <- 90
 
 # Parameters for demand calculations -------------------------------------------
@@ -124,7 +107,7 @@ Qn_floor <- 0
 
 # Parameters for demand-based uncertainty intervals ----------------------------
 
-# years to use for identifying iterations in 07_parameters_for_intervals.R
+# years to use for identifying iterations in 05_param_scenario_discovery.R
 # start with first year divisible by five that is greater than base year
 seq_start <- base_year + (5 - base_year %% 5)
 year_iter <- c(seq(seq_start,2100, by=5))
@@ -137,13 +120,7 @@ lo_max <- 5
 
 # Scenario lists to run demand calculations for --------------------------------
 
-# scenarios to run in 03a_calculate_demand_ens_only.R
-# scen_list_demand_ens_only
-
-# scenarios to run in 03b_calculate_demand_ML.R
-# scen_list_demand_ML
-
-# scenarios to run in 03c_calculate_demand_GCAM_ML.R
+# scenarios to run in 03_calculate_demand.R
 scen_list_demand_GCAM_ML <- 
   # list("Ref_ML_gcam_MLparams_bc")
   # list("Ref_ML_gcam_ens_bc")
@@ -152,16 +129,3 @@ scen_list_demand_GCAM_ML <-
   # list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
   list("Ref_ML_gcam_MLprice_ens_bc", "Ref_ML_gcam_MLincome_ens_bc", "Ref_ML_gcam_MLscale_ens_bc")
   # list("Ref_ML_HP_gcam_MLprice_ens_bc", "Ref_ML_HP_gcam_MLincome_ens_bc", "Ref_ML_HP_gcam_MLscale_ens_bc")
-
-# scenarios to run in 08_calculate_demand_GCAM_HDLD.R
-scen_list_demand_GCAM_HDLD <-
-  #  list("Ref_ML_gcam_LDparams_bc")
-  #  list("Ref_ML_gcam_HDparams_bc")
-  #  list("Ref_LD_gcam_LDparams_bc")
-  #  list("Ref_HD_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc")
-  #  list("Ref_ML_gcam_LDparams_bc", "Ref_ML_gcam_HDparams_bc",
-  #       "Ref_HD_gcam_HDparams_bc", "Ref_LD_gcam_LDparams_bc")
-  # list("Ref_HD_gcam_ens_bc")
-  list("Ref_LD_gcam_ens_bc")
-

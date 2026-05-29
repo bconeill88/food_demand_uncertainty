@@ -32,10 +32,3 @@ reg_list <- seq(1:32)
 subtract_demand_dfs(scen_var, scen_var_case, scen_var_path,
                     scen_base, scen_base_case, scen_base_path, 
                     output_path, reg_list)
-
-print("saved differences in demand")
-
-# diff_result <- readRDS(file.path(scen_base_path, 
-#                                  paste0("diffs_", scen_var), 
-#                                  "demand_diffs_R5_ens_bc.RDS"))
-

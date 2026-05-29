@@ -1,4 +1,35 @@
+# ------------------------------------------------------------------------------
+# Model-vs-observation plotting helper functions
+# ------------------------------------------------------------------------------
+#
+# Helper functions for creating diagnostic plots that compare modeled food demand
+# against observed food demand.
+#
+# Functions included:
+#
+#   plot_model_vs_obs_scatter_rows_pdf()
+#     Create a multi-page PDF of observed vs. modeled demand scatterplots.
+#     Each row corresponds to a parameter case, and columns show staples,
+#     non-staples, and total demand.
+#
+#   plot_income_vs_demand_rows_pdf()
+#     Create a multi-page PDF of observed and modeled demand against income.
+#     Each row corresponds to a parameter case, and columns show staples,
+#     non-staples, and total demand.
+#
+# Notes:
+#   - Both functions write PDF files and return the output path invisibly.
+#   - Short plotting helpers are defined locally inside each function because
+#     they are only used within those plotting workflows.
+# ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
+# Observed vs. modeled demand scatterplot PDF
+# ------------------------------------------------------------------------------
+
+# Create a multi-page PDF comparing observed and modeled demand. Each page shows
+# up to three parameter cases, with one case per row and separate panels for
+# staples, non-staples, and total demand.
 plot_model_vs_obs_scatter_rows_pdf <- function(
     df,
     output_dir,
@@ -140,6 +171,15 @@ plot_model_vs_obs_scatter_rows_pdf <- function(
   
   invisible(out_path)
 }
+
+
+# ------------------------------------------------------------------------------
+# Income vs. observed/modeled demand PDF
+# ------------------------------------------------------------------------------
+
+# Create a multi-page PDF comparing observed and modeled demand against income.
+# Each page shows up to rows_per_page parameter cases, with one case per row and
+# separate panels for staples, non-staples, and total demand.
 
 plot_income_vs_demand_rows_pdf <- function(
     df,

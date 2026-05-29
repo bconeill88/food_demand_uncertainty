@@ -1,10 +1,56 @@
-# =============================================================================
-# Demand vs income + Elasticities vs income
-# =============================================================================
+# ------------------------------------------------------------------------------
+# Stylized demand plotting functions
+# ------------------------------------------------------------------------------
+#
+# Helper functions for creating stylized demand and elasticity plots over income.
+# These functions are used by plot_stylized_demand.R to compare this study's
+# maximum-likelihood demand parameters with the 2017 and 2021 parameter sets.
+#
+# Functions included:
+#   .require_plot_pkgs()
+#     Check that packages required by the plotting functions are installed.
+#
+#   .study_style_maps()
+#     Return labels and linetypes used to distinguish the 2026, 2017, and 2021
+#     parameter sets.
+#
+#   .label_x_target()
+#     Choose a target x-location for direct curve labels.
+#
+#   .make_label_df()
+#     Build a label-position data frame for direct curve labels. Currently not
+#     called by the plotting functions, but retained as a small labeling utility.
+#
+#   .build_demand_long()
+#     Convert stylized staples and non-staples demand output from wide to long
+#     format for plotting.
+#
+#   .build_elast_long()
+#     Convert price and income elasticity output from wide to long format for
+#     plotting.
+#
+#   plot_demand_vs_income()
+#     Plot stylized staples and non-staples demand as functions of income, either
+#     for this study alone or compared with the 2017 and 2021 parameter sets.
+#
+#   plot_elasticities_vs_income()
+#     Plot stylized price and income elasticities as functions of income, either
+#     for this study alone or compared with the 2017 and 2021 parameter sets.
+#
+#   make_demand_vs_income_pdf()
+#     Save a two-panel PDF containing the demand-vs-income plot for this study
+#     alone and the comparison across all three parameter sets.
+#
+#   make_elasticities_vs_income_pdf()
+#     Save a two-panel PDF containing the elasticity-vs-income plot for this
+#     study alone and the comparison across all three parameter sets.
+# ------------------------------------------------------------------------------
 
+# ==============================================================================
+# Package and style helpers
+# ==============================================================================
 
-# ---- helpers -----------------------------------------------------------------
-
+# Check that required plotting packages are installed.
 .require_plot_pkgs <- function() {
   
   # Check required packages are available
@@ -21,7 +67,7 @@
   }
 }
 
-
+# Return labels and linetypes for the parameter-set comparison.
 .study_style_maps <- function() {
   
   # Map study years to labels and line types
@@ -36,14 +82,18 @@
   list(label_map = lbl, linetype_map = lty)
 }
 
+# ==============================================================================
+# Label helpers
+# ==============================================================================
 
+# Choose an x-position for direct curve labels.
 .label_x_target <- function(y_vec) {
   
   # Choose x-location for labels near right side of plot
   quantile(y_vec, probs = 0.85, na.rm = TRUE, names = FALSE)
 }
 
-
+# Build a data frame for direct curve labels. Currently retained but not called.
 .make_label_df <- function(df,
                            x_col = "Y",
                            y_col = "value",
@@ -63,10 +113,11 @@
     mutate(label_text = .data[[label_col]])
 }
 
+# ==============================================================================
+# Data reshaping helpers
+# ==============================================================================
 
-
-# ---- demand data reshaping ---------------------------------------------------
-
+# Convert stylized demand output to long format for plotting.
 .build_demand_long <- function(df, study_key) {
   
   # Convert wide demand data to long format for plotting
@@ -87,10 +138,58 @@
     )
 }
 
+# Convert stylized elasticity output to long format for plotting.
+.build_elast_long <- function(df, study_key) {
+  
+  price_vars  <- c("elast.ss","elast.nn","elast.sn","elast.ns")
+  income_vars <- c("eta.s","eta.n")
+  
+  missing <- setdiff(c("Y",price_vars,income_vars), names(df))
+  
+  if(length(missing) > 0) {
+    stop("Missing columns: ", paste(missing, collapse = ", "))
+  }
+  
+  
+  d_price <- df %>%
+    select(Y, all_of(price_vars)) %>%
+    pivot_longer(cols = all_of(price_vars),
+                 names_to = "series",
+                 values_to = "value") %>%
+    mutate(panel = "Price elasticities")
+  
+  
+  d_income <- df %>%
+    select(Y, all_of(income_vars)) %>%
+    pivot_longer(cols = all_of(income_vars),
+                 names_to = "series",
+                 values_to = "value") %>%
+    mutate(panel = "Income elasticities")
+  
+  
+  bind_rows(d_price, d_income) %>%
+    mutate(
+      study = study_key,
+      panel = factor(panel,
+                     levels = c("Price elasticities",
+                                "Income elasticities")),
+      series_label = case_when(
+        series == "elast.ss" ~ "Own-price (Staples)",
+        series == "elast.nn" ~ "Own-price (Non-staples)",
+        series == "elast.sn" ~ "Cross-price (Staples)",
+        series == "elast.ns" ~ "Cross-price (Non-staples)",
+        series == "eta.s"    ~ "Income (Staples)",
+        series == "eta.n"    ~ "Income (Non-staples)",
+        TRUE ~ series
+      )
+    )
+}
 
+# ==============================================================================
+# Plot builders
+# ==============================================================================
 
-# ---- demand plotting ---------------------------------------------------------
-
+# Plot stylized staples and non-staples demand over income.
 plot_demand_vs_income <- function(demand_2026,
                                   demand_2017 = NULL,
                                   demand_2021 = NULL,
@@ -272,102 +371,7 @@ plot_demand_vs_income <- function(demand_2026,
     )
 }
 
-
-make_demand_vs_income_pdf <- function(demand_2026,
-                                      demand_2017,
-                                      demand_2021,
-                                      output_file,
-                                      x_min = NULL,
-                                      x_max = NULL,
-                                      sqrt_x = FALSE,
-                                      width = 6.0,
-                                      height = 8.5) {
-  
-  .require_plot_pkgs()
-  
-  # gridExtra is needed for stacking plots on one page
-  if(!requireNamespace("gridExtra", quietly = TRUE)) {
-    stop("Missing package: gridExtra (install.packages('gridExtra'))")
-  }
-  
-  p1 <- plot_demand_vs_income(
-    demand_2026 = demand_2026,
-    include_all_three = FALSE,
-    x_min = x_min,
-    x_max = x_max,
-    sqrt_x = sqrt_x
-  )
-  
-  p2 <- plot_demand_vs_income(
-    demand_2026 = demand_2026,
-    demand_2017 = demand_2017,
-    demand_2021 = demand_2021,
-    include_all_three = TRUE,
-    x_min = x_min,
-    x_max = x_max,
-    sqrt_x = sqrt_x
-  )
-  
-  pdf(output_file, width = width, height = height)
-  on.exit(dev.off(), add = TRUE)
-  
-  # IMPORTANT: no grid.newpage() here (avoids blank first page)
-  gridExtra::grid.arrange(p1, p2, ncol = 1, heights = c(1, 1))
-}
-
-
-# ---- elasticity data reshaping -----------------------------------------------
-
-.build_elast_long <- function(df, study_key) {
-  
-  price_vars  <- c("elast.ss","elast.nn","elast.sn","elast.ns")
-  income_vars <- c("eta.s","eta.n")
-  
-  missing <- setdiff(c("Y",price_vars,income_vars), names(df))
-  
-  if(length(missing) > 0) {
-    stop("Missing columns: ", paste(missing, collapse = ", "))
-  }
-  
-  
-  d_price <- df %>%
-    select(Y, all_of(price_vars)) %>%
-    pivot_longer(cols = all_of(price_vars),
-                 names_to = "series",
-                 values_to = "value") %>%
-    mutate(panel = "Price elasticities")
-  
-  
-  d_income <- df %>%
-    select(Y, all_of(income_vars)) %>%
-    pivot_longer(cols = all_of(income_vars),
-                 names_to = "series",
-                 values_to = "value") %>%
-    mutate(panel = "Income elasticities")
-  
-  
-  bind_rows(d_price, d_income) %>%
-    mutate(
-      study = study_key,
-      panel = factor(panel,
-                     levels = c("Price elasticities",
-                                "Income elasticities")),
-      series_label = case_when(
-        series == "elast.ss" ~ "Own-price (Staples)",
-        series == "elast.nn" ~ "Own-price (Non-staples)",
-        series == "elast.sn" ~ "Cross-price (Staples)",
-        series == "elast.ns" ~ "Cross-price (Non-staples)",
-        series == "eta.s"    ~ "Income (Staples)",
-        series == "eta.n"    ~ "Income (Non-staples)",
-        TRUE ~ series
-      )
-    )
-}
-
-
-
-# ---- elasticity plotting -----------------------------------------------------
-
+# Plot stylized price and income elasticities over income.
 plot_elasticities_vs_income <- function(demand_2026,
                                         demand_2017 = NULL,
                                         demand_2021 = NULL,
@@ -507,7 +511,54 @@ plot_elasticities_vs_income <- function(demand_2026,
   p
 }
 
+# ==============================================================================
+# PDF writers
+# ==============================================================================
 
+# Save demand-vs-income plots for this study alone and for all parameter sets.
+make_demand_vs_income_pdf <- function(demand_2026,
+                                      demand_2017,
+                                      demand_2021,
+                                      output_file,
+                                      x_min = NULL,
+                                      x_max = NULL,
+                                      sqrt_x = FALSE,
+                                      width = 6.0,
+                                      height = 8.5) {
+  
+  .require_plot_pkgs()
+  
+  # gridExtra is needed for stacking plots on one page
+  if(!requireNamespace("gridExtra", quietly = TRUE)) {
+    stop("Missing package: gridExtra (install.packages('gridExtra'))")
+  }
+  
+  p1 <- plot_demand_vs_income(
+    demand_2026 = demand_2026,
+    include_all_three = FALSE,
+    x_min = x_min,
+    x_max = x_max,
+    sqrt_x = sqrt_x
+  )
+  
+  p2 <- plot_demand_vs_income(
+    demand_2026 = demand_2026,
+    demand_2017 = demand_2017,
+    demand_2021 = demand_2021,
+    include_all_three = TRUE,
+    x_min = x_min,
+    x_max = x_max,
+    sqrt_x = sqrt_x
+  )
+  
+  pdf(output_file, width = width, height = height)
+  on.exit(dev.off(), add = TRUE)
+  
+  # IMPORTANT: no grid.newpage() here (avoids blank first page)
+  gridExtra::grid.arrange(p1, p2, ncol = 1, heights = c(1, 1))
+}
+
+# Save elasticity-vs-income plots for this study alone and for all parameter sets.
 make_elasticities_vs_income_pdf <- function(demand_2026,
                                             demand_2017,
                                             demand_2021,
@@ -548,3 +599,4 @@ make_elasticities_vs_income_pdf <- function(demand_2026,
   
   grid_arrange(p1, p2, ncol = 1, heights = c(1, 1))
 }
+

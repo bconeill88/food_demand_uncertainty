@@ -1,3 +1,6 @@
+# Helper functions for calculating differences in demand as calculated either by
+# ambrosia or by GCAM
+
 # Function to subtract all elements of two income/price scenarios of 
 # food demand and elasticities (scen1 - scen2). Assumes original scenario results
 # exist as separate files for each region, for example as produced by ambrosia

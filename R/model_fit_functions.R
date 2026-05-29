@@ -1,5 +1,38 @@
+# ------------------------------------------------------------------------------
+# Model-fit and model-comparison helper functions
+# ------------------------------------------------------------------------------
+#
+# Helper functions for calculating diagnostics and summary tables used by
+# plot_main_results.R. These functions compute paired fit metrics, compare GCAM
+# and ambrosia scatter outputs, evaluate model results against observations, and
+# format metric tables for reporting.
+#
+# Functions included:
+#   calc_ccc()                    - Computes Lin's concordance correlation coefficient.
+#   calc_fit_metrics()            - Computes grouped paired fit metrics for truth/prediction columns.
+#   check_fit_inputs()            - Summarizes finite pairs and near-zero values for paired inputs.
+#   format_fit_table()            - Standardizes labels, ordering, and column names in metric tables.
+#   finalize_fit_table()          - Rounds and orders formatted metric tables for reporting.
+#   calc_scatter_fit_metrics()    - Computes fit metrics for GCAM-vs-ambrosia scatter data.
+#   check_scatter_fit_inputs()    - Runs paired-input diagnostics for scatter comparison data.
+#   calc_model_vs_obs_metrics()   - Computes model-vs-observation metrics for demand variables.
+#   check_model_vs_obs_inputs()   - Runs paired-input diagnostics for model-vs-observation data.
+#   calc_ratio_metrics()          - Computes grouped prediction/truth ratio summaries.
+#   make_metrics_summary_table()  - Builds concise summary tables from regional and decile metrics.
+#
+# Notes:
+#   - calc_model_vs_obs_metrics(), check_model_vs_obs_inputs(), and
+#     check_scatter_fit_inputs() are not called by plot_main_results.R, but they
+#     are consistent with the file purpose and useful as diagnostics or optional
+#     model-fit workflows.
+#   - calc_ratio_metrics() is currently used for difference comparisons only.
+# ------------------------------------------------------------------------------
 
-# Concordance correlation coefficient
+# ------------------------------------------------------------------------------
+# Core paired metric calculations
+# ------------------------------------------------------------------------------
+
+# Compute Lin's concordance correlation coefficient for paired finite values.
 calc_ccc <- function(x, y) {
   
   # Keep finite complete pairs
@@ -21,6 +54,8 @@ calc_ccc <- function(x, y) {
 }
 
 # General paired metrics
+
+# Compute standard paired fit metrics for truth and prediction columns, optionally by group.
 calc_fit_metrics <- function(
     df,
     truth_col,
@@ -89,6 +124,8 @@ calc_fit_metrics <- function(
 }
 
 # Diagnostics for paired fit inputs
+
+# Summarize completeness and near-zero denominator counts for paired fit inputs.
 check_fit_inputs <- function(df, truth_col, pred_col, near_zero = 1e-8) {
   
   # Check columns
@@ -108,91 +145,12 @@ check_fit_inputs <- function(df, truth_col, pred_col, near_zero = 1e-8) {
 }
 
 # Metrics for scatter comparison objects
-calc_scatter_fit_metrics <- function(
-    scatter_df,
-    group_cols = c("scenario_name", "demand_type"),
-    near_zero = 1e-8,
-    add_decile_all = TRUE,
-    comparison_type = c("absolute", "difference"),
-    output_dir_tables = NULL,
-    filename = NULL
-) {
-  
-  # Check required columns
-  req <- c("x_value", "y_value")
-  miss <- setdiff(req, names(scatter_df))
-  if (length(miss) > 0) {
-    stop("calc_scatter_fit_metrics(): missing columns: ", paste(miss, collapse = ", "))
-  }
-  
-  comparison_type <- match.arg(comparison_type)
-  
-  # Main grouped metrics
-  out_main <- calc_fit_metrics(
-    df = scatter_df,
-    truth_col = "x_value",
-    pred_col  = "y_value",
-    group_cols = group_cols,
-    near_zero = near_zero
-  )
-  
-  out <- out_main
-  
-  # Add pooled "All" row across deciles if deciles are part of grouping
-  if (add_decile_all && "consumer_group" %in% group_cols && "consumer_group" %in% names(scatter_df)) {
-    
-    group_cols_all <- setdiff(group_cols, "consumer_group")
-    
-    out_all <- calc_fit_metrics(
-      df = scatter_df,
-      truth_col = "x_value",
-      pred_col  = "y_value",
-      group_cols = group_cols_all,
-      near_zero = near_zero
-    ) %>%
-      mutate(consumer_group = "All")
-    
-    out <- bind_rows(out_main, out_all)
-  }
-  
-  # Clean labels / sort / rename columns
-  out <- format_fit_table(out)
-  
-  out <- finalize_fit_table(
-    out,
-    table_type = if (comparison_type == "absolute") "model_comp_abs" else "model_comp_diff"
-  )
-  
-  # Save to CSV if requested
-  if (!is.null(output_dir_tables)) {
-    
-    if (is.null(filename)) {
-      filename <- "metrics_scatter.csv"
-    }
-    
-    dir.create(output_dir_tables, recursive = TRUE, showWarnings = FALSE)
-    write.csv(out, file.path(output_dir_tables, filename), row.names = FALSE)
-  }
-  
-  return(out)
-}
 
-# Diagnostics for scatter comparison objects
-check_scatter_fit_inputs <- function(
-    scatter_df,
-    near_zero = 1e-8
-) {
-  
-  # Run diagnostics
-  check_fit_inputs(
-    df = scatter_df,
-    truth_col = "x_value",
-    pred_col  = "y_value",
-    near_zero = near_zero
-  )
-}
+# ------------------------------------------------------------------------------
+# Table formatting utilities
+# ------------------------------------------------------------------------------
 
-# Clean and sort fit tables for manuscript import
+# Standardize labels, ordering, and column names in metric tables for manuscript use.
 format_fit_table <- function(df) {
   
   out <- df
@@ -323,6 +281,7 @@ format_fit_table <- function(df) {
   return(out)
 }
 
+# Round and order formatted metric tables for model-fit or model-comparison outputs.
 finalize_fit_table <- function(df, table_type = c("model_fit", "model_comp_abs", "model_comp_diff")) {
   
   table_type <- match.arg(table_type)
@@ -372,6 +331,105 @@ finalize_fit_table <- function(df, table_type = c("model_fit", "model_comp_abs",
 
 
 # Metrics for model vs observations
+
+# ------------------------------------------------------------------------------
+# Metrics for GCAM-vs-ambrosia scatter comparisons
+# ------------------------------------------------------------------------------
+
+# Compute model-comparison metrics from scatter-plot data with x_value as truth and y_value as prediction.
+calc_scatter_fit_metrics <- function(
+    scatter_df,
+    group_cols = c("scenario_name", "demand_type"),
+    near_zero = 1e-8,
+    add_decile_all = TRUE,
+    comparison_type = c("absolute", "difference"),
+    output_dir_tables = NULL,
+    filename = NULL
+) {
+  
+  # Check required columns
+  req <- c("x_value", "y_value")
+  miss <- setdiff(req, names(scatter_df))
+  if (length(miss) > 0) {
+    stop("calc_scatter_fit_metrics(): missing columns: ", paste(miss, collapse = ", "))
+  }
+  
+  comparison_type <- match.arg(comparison_type)
+  
+  # Main grouped metrics
+  out_main <- calc_fit_metrics(
+    df = scatter_df,
+    truth_col = "x_value",
+    pred_col  = "y_value",
+    group_cols = group_cols,
+    near_zero = near_zero
+  )
+  
+  out <- out_main
+  
+  # Add pooled "All" row across deciles if deciles are part of grouping
+  if (add_decile_all && "consumer_group" %in% group_cols && "consumer_group" %in% names(scatter_df)) {
+    
+    group_cols_all <- setdiff(group_cols, "consumer_group")
+    
+    out_all <- calc_fit_metrics(
+      df = scatter_df,
+      truth_col = "x_value",
+      pred_col  = "y_value",
+      group_cols = group_cols_all,
+      near_zero = near_zero
+    ) %>%
+      mutate(consumer_group = "All")
+    
+    out <- bind_rows(out_main, out_all)
+  }
+  
+  # Clean labels / sort / rename columns
+  out <- format_fit_table(out)
+  
+  out <- finalize_fit_table(
+    out,
+    table_type = if (comparison_type == "absolute") "model_comp_abs" else "model_comp_diff"
+  )
+  
+  # Save to CSV if requested
+  if (!is.null(output_dir_tables)) {
+    
+    if (is.null(filename)) {
+      filename <- "metrics_scatter.csv"
+    }
+    
+    dir.create(output_dir_tables, recursive = TRUE, showWarnings = FALSE)
+    write.csv(out, file.path(output_dir_tables, filename), row.names = FALSE)
+  }
+  
+  return(out)
+}
+
+# Diagnostics for scatter comparison objects
+
+# Run paired-input diagnostics for scatter-plot comparison data.
+check_scatter_fit_inputs <- function(
+    scatter_df,
+    near_zero = 1e-8
+) {
+  
+  # Run diagnostics
+  check_fit_inputs(
+    df = scatter_df,
+    truth_col = "x_value",
+    pred_col  = "y_value",
+    near_zero = near_zero
+  )
+}
+
+# Clean and sort fit tables for manuscript import
+
+# ------------------------------------------------------------------------------
+# Metrics for model-vs-observation comparisons
+# ------------------------------------------------------------------------------
+
+# Compute model-vs-observation fit metrics for selected food-demand variables.
 calc_model_vs_obs_metrics <- function(
     demand_model_vs_obs,
     demand_types = c("Qs", "Qn", "Qtot"),
@@ -454,6 +512,8 @@ calc_model_vs_obs_metrics <- function(
 }
 
 # Diagnostics for model vs observations
+
+# Run paired-input diagnostics for model-vs-observation demand comparisons.
 check_model_vs_obs_inputs <- function(
     demand_model_vs_obs,
     demand_types = c("Qs", "Qn", "Qtot"),
@@ -508,6 +568,11 @@ check_model_vs_obs_inputs <- function(
   return(out)
 }
 
+# ------------------------------------------------------------------------------
+# Ratio metrics and summary tables
+# ------------------------------------------------------------------------------
+
+# Compute grouped ratios of prediction to truth after filtering near-zero denominators.
 calc_ratio_metrics <- function(
     df,
     truth_col,
@@ -566,6 +631,8 @@ calc_ratio_metrics <- function(
 }
 
 # Create concise summary table from existing regional + decile metrics
+
+# Create a concise manuscript summary table from regional and decile metric tables.
 make_metrics_summary_table <- function(
     metrics_reg,
     metrics_dec,
@@ -605,3 +672,4 @@ make_metrics_summary_table <- function(
   
   out
 }
+

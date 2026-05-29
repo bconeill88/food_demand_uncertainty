@@ -1,14 +1,46 @@
-# function for calculating parameters representative of high demand (HD) and low
-# demand (LD) outcomes for an ensemble of demand results based on parameters
-# indicated by "data_dir" and income and prices from "scen". 
-# Demand ensembles are read in from directory given by "data_dir", "scen", and
-# "data_subdir".
-# Method selects demand iterations that fall in high and low intervals of demand
-# defined by percentiles given in the _min and _max arguments, for region numbers
-# contained in "regions" and years given in "year_vals".
-# Results are saved in sub-directory given by "data_dir", "scen", and "data_subdir",
-# with "scen_case" appended to the file name.
+# ------------------------------------------------------------------------------
+# Parameter interval helper functions
+# ------------------------------------------------------------------------------
+#
+# Helper functions for identifying parameter iterations that are representative
+# of high/low food demand outcomes, high/low price responses, and joint
+# absolute-demand/price-response cases. The functions also create summary
+# tables, export selected parameter sets, and save demand projections for the
+# selected iterations.
+#
+# Functions included:
+# - make_HL_params_freq(): Orchestrates interval extraction, frequency counting,
+#   and parameter-table creation for one high/low outcome family, such as ABS
+#   demand or DIFF price-response outcomes.
+# - make_BOTH_params_freq(): Orchestrates the corresponding workflow for joint
+#   ABS and DIFF cases such as HD_HPR and LD_LPR.
+# - get_demand_intervals(): Reads regional ensemble files and tags iterations
+#   that fall within high/low quantile intervals for Qs, Qn, Qtot, and QsQn.
+# - get_demand_intervals_both(): Reads ABS and DIFF regional ensemble files and
+#   tags iterations that satisfy both interval conditions for the same
+#   region/year.
+# - compute_max_iteration_frequencies(): Finds the most frequently selected
+#   iteration for each ABS or DIFF case, by region and globally.
+# - compute_max_iteration_frequencies_both(): Finds the most frequently selected
+#   iteration for each BOTH case, by region and globally.
+# - build_full_frequency_table(): Builds a detailed frequency table for ABS or
+#   DIFF cases across regions, income categories, and food-demand types.
+# - build_full_frequency_table_both(): Builds a detailed frequency table for
+#   BOTH cases and flags maximum-frequency iterations.
+# - build_parameter_tables(): Extracts global and food-expenditure parameter
+#   rows for selected maximum-frequency iterations.
+# - make_and_save_summary_tables(): Creates and saves wide summary tables for
+#   maximum frequencies and selected iterations.
+# - export_params_for_iter_table(): Exports parameter CSVs for selected
+#   iterations listed in an iteration summary table.
+# - save_world_maxfreq_param_csvs(): Saves reduced World-level Qtot parameter
+#   CSVs used as GCAM run inputs.
+# - save_case_and_ml_projections(): Saves all-region demand projections for
+#   selected cases and the ML parameter set.
+#
+# ------------------------------------------------------------------------------
 
+# Identify high/low interval parameter sets for one outcome family.
 make_HL_params_freq <- function(
     year_vals,
     data_dir,
@@ -96,6 +128,9 @@ make_HL_params_freq <- function(
   }
 }
 
+# ------------------------------------------------------------------------------
+
+# Identify parameter sets that jointly satisfy absolute-demand and price-response intervals.
 make_BOTH_params_freq <- function(
     year_vals,
     data_dir,          # needed to load parameter files
@@ -191,11 +226,9 @@ make_BOTH_params_freq <- function(
   ))
 }
 
+# ------------------------------------------------------------------------------
 
-# function for getting iterations that are members of certain "cases" defined as the value of
-# a type of food demand falling in given quantile; food types include Qn, Qs, Qtot, and Qs and
-# Qn simultaneously; quantiles include those defined for high demand and low demand as passed
-# in "bounds"
+# Extract iterations falling within high/low intervals for ABS or DIFF outcomes.
 get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds,
                                  hi_param_name, lo_param_name) {
   
@@ -259,8 +292,9 @@ get_demand_intervals <- function(year_vals, out_dir, scen_case, regions, bounds,
   bind_rows(demand_intervals_list)
 }
 
-# Identify iterations that satisfy BOTH an ABS interval (HD/LD)
-# and a DIFF interval (HPR/LPR) for the same region/year.
+# ------------------------------------------------------------------------------
+
+# Extract iterations satisfying both ABS and DIFF interval conditions.
 get_demand_intervals_both <- function(
     year_vals,
     abs_dir,
@@ -365,10 +399,9 @@ get_demand_intervals_both <- function(
   bind_rows(out_list)
 }
 
-# given a data frame with iterations tagged by intervals they fall within, 
-# calculate the iteration that appears with the highest frequency across 
-# years and deciles, for each region individually and for all regions combined,
-# and return as a data frame
+# ------------------------------------------------------------------------------
+
+# Select the most frequent iterations for high/low ABS or DIFF interval cases.
 compute_max_iteration_frequencies <- function(demand_result, hi_param_name, 
                                               lo_param_name) {
   
@@ -420,6 +453,9 @@ compute_max_iteration_frequencies <- function(demand_result, hi_param_name,
   })
 }
 
+# ------------------------------------------------------------------------------
+
+# Select the most frequent iterations for BOTH interval cases.
 compute_max_iteration_frequencies_both <- function(demand_result_both) {
   
   cases <- sort(unique(demand_result_both$measure))
@@ -450,6 +486,9 @@ compute_max_iteration_frequencies_both <- function(demand_result_both) {
   })
 }
 
+# ------------------------------------------------------------------------------
+
+# Build the detailed frequency table for ABS or DIFF interval cases.
 build_full_frequency_table <- function(demand_result, max_iterations, regions,
                                        hi_param_name, lo_param_name) {
 
@@ -524,6 +563,9 @@ build_full_frequency_table <- function(demand_result, max_iterations, regions,
     arrange(case, GCAM_region_ID, food_type, income_cat)
 }
 
+# ------------------------------------------------------------------------------
+
+# Build the detailed frequency table for BOTH interval cases.
 build_full_frequency_table_both <- function(demand_intervals, max_iter_frequencies, regions) {
   
   cases <- sort(unique(demand_intervals$measure))
@@ -553,6 +595,9 @@ build_full_frequency_table_both <- function(demand_intervals, max_iter_frequenci
   })
 }
 
+# ------------------------------------------------------------------------------
+
+# Build parameter tables for selected maximum-frequency iterations.
 build_parameter_tables <- function(max_iterations, param_global, param_FE) {
   
   list(
@@ -580,190 +625,236 @@ build_parameter_tables <- function(max_iterations, param_global, param_FE) {
   )
 }
 
+# ------------------------------------------------------------------------------
 
-# function for plotting results
-
-plot_demand_measures_with_global <- function(
-    freq_table,
-    demand_result,
-    region,
-    measures,
-    out_dir,
-    sample_n = 100,
-    title = TRUE
-) {
-  stopifnot(length(measures) == 2)
+# Create and save summary tables of maximum frequencies and selected iterations.
+make_and_save_summary_tables <- function(max_freqs, results_path, mapping_df,
+                                         output_stub = NULL) {
   
-  # Load full regional ensemble for sample lines
-  demand_reg_path <- file.path(out_dir, 
-                               paste0("demand_R", region, scen_case, ".RDS"))
-  demand_reg <- readRDS(demand_reg_path)
+  message("Creating summary tables of max frequencies and max iterations")
   
-  # Sample 100 unique iterations
-  sampled_iterations <- demand_reg %>%
-    distinct(iteration, year, Qs.region, Qn.region, Qtot.region) %>%
-    pull(iteration) %>%
-    unique() %>%
-    sample(size = min(sample_n, length(.)))
+  # create table of frequencies of max frequency iterations for each case
+  max_freq_table <- max_freqs %>%
+    select(GCAM_region_ID, case, freq) %>%
+    pivot_wider(names_from = case, values_from = freq) %>%
+    left_join(mapping_df, by = "GCAM_region_ID") %>% # add region names
+    relocate(region, .before = GCAM_region_ID) %>%
+    arrange(GCAM_region_ID) %>%
+    rename(ID = GCAM_region_ID)
   
-  sampled_data <- demand_reg %>%
-    filter(iteration %in% sampled_iterations) %>%
-    distinct(iteration, year, Qs.region, Qn.region, Qtot.region) %>%
-    tidyr::pivot_longer(
-      cols = c(Qs.region, Qn.region, Qtot.region),
-      names_to = "demand_type",
-      values_to = "demand_value"
-    )
+  # create table of iteration numbers of max frequency iterations for each case
+  iter_table <- max_freqs %>%
+    select(GCAM_region_ID, case, max_iter) %>%
+    pivot_wider(names_from = case, values_from = max_iter) %>%
+    left_join(mapping_df, by = "GCAM_region_ID") %>%
+    relocate(region, .before = GCAM_region_ID) %>%
+    arrange(GCAM_region_ID) %>%
+    rename(ID = GCAM_region_ID)
   
-  # Grab both regional + global iterations per measure
-  iter_info <- freq_table %>%
-    filter(GCAM_region_ID %in% c(region, 33), case %in% measures) %>%
-    mutate(source = ifelse(GCAM_region_ID == region, "regional", "global"))
-  
-  if (nrow(iter_info) != 4) {
-    stop(glue::glue("Expected 4 rows (2 cases x 2 sources), got {nrow(iter_info)}"))
+  # save images of tables if in interactive setting, RDS files if on PIC
+  if (interactive()) {
+    
+    ensure_package(gt)
+    ensure_package(webshot2)
+    
+    gtsave(gt(max_freq_table) %>% tab_header(title = "Maximum Frequencies"),
+           file.path(results_path, "table_max_frequencies_all_regions.png"))
+    
+    gtsave(gt(iter_table) %>% tab_header(title = "Iteration Numbers of Maximum Frequency"),
+           file.path(results_path, "table_max_iterations_all_regions.png"))
+    
+  } else {
+    
+    saveRDS(max_freq_table, file.path(results_path,
+                                      "table_max_frequencies_all_regions.RDS"))
+    saveRDS(iter_table, file.path(results_path,
+                                  "table_max_iterations_all_regions.RDS"))
   }
   
-  # Get demand for both regional + global iterations
-  demand_compare <- map_dfr(seq_len(nrow(iter_info)), function(i) {
-    row <- iter_info[i, ]
-    if (row$source == "regional") {
-      # pull from demand_result (filtered)
-      demand_result %>%
-        filter(
-          GCAM_region_ID == region,
-          measure == row$case,
-          iteration == row$max_iter
-        ) %>%
-        mutate(source = row$source)
-    } else {
-      # pull from full regional ensemble (unfiltered)
-      # get the demand type from the measure
-      fd_type <- stringr::str_extract(row$case, "Qs|Qn|Qtot")
-      col_name <- paste0(fd_type, ".region")
-      
-      demand_reg %>%
-        filter(iteration == row$max_iter) %>%
-        distinct(iteration, year, GCAM_region_ID, Qs.region, Qn.region, Qtot.region) %>%
-        mutate(
-          measure = row$case,
-          source = row$source
-        )
-    }
-  })
-  
-  # Pivot to long format
-  plot_data <- demand_compare %>%
-    tidyr::pivot_longer(
-      cols = c(Qs.region, Qn.region, Qtot.region),
-      names_to = "demand_type",
-      values_to = "demand_value"
+  # Also write iteration CSV (keep existing naming logic where possible)
+  if (!is.null(output_stub)) {
+    write.csv(
+      iter_table,
+      file.path(results_path, paste0("iter_table_", output_stub, "_Qtot.csv")),
+      row.names = FALSE
     )
+  }
   
-  # Plot: background ensemble + overlaid lines
-  ggplot2::ggplot() +
-    # Background sample
-    ggplot2::geom_line(
-      data = sampled_data,
-      ggplot2::aes(x = year, y = demand_value, group = interaction(iteration, demand_type)),
-      color = "gray85", linewidth = 0.4, alpha = 0.5
-    ) +
-    # Main demand lines
-    ggplot2::geom_line(
-      data = plot_data,
-      ggplot2::aes(x = year, y = demand_value, color = measure, linetype = source),
-      linewidth = 1.2
-    ) +
-    ggplot2::facet_wrap(~ demand_type, scales = "free_y", nrow = 1) +
-    ggplot2::labs(
-      x = "Year",
-      y = "Demand",
-      color = "Measure",
-      linetype = "Source",
-      title = if (title) glue::glue("Region {region} | Regional vs Global Max Iteration Intervals") else NULL
-    ) +
-    ggplot2::theme_minimal(base_size = 13)
+  list(max_freq_table = max_freq_table, iter_table = iter_table)
 }
 
+# ------------------------------------------------------------------------------
 
-
-
-
-
-# function for calculating parameters representative of high demand (HD) and low
-# demand (LD) outcomes for a given food type (fd_type), for a given income
-# scenario (inc_scen), for a list of regions (regions), and price scenario (pr_scen).
-# Selects demand iterations that fall in specified high and low quantile intervals at
-# each income level, then takes median of parameter values that produced those
-# iterations. Saves results (median parameter values at each income level) to a
-# single file containing both global and FE parameters in the folder corresponding
-# to the price scenario.
-make_HD_LD_params_median <- function(fd_type,inc_scen,pr_scen,regions,hi_interval_min,
-                                     hi_interval_max,lo_interval_min,lo_interval_max) {
+# Export global and food-expenditure parameters for selected iterations.
+export_params_for_iter_table <- function(iter_table, case_cols, input_dir,
+                                         results_path, output_stub) {
   
-  # load parameter files
-  load(paste(analysis_dir,input_path,"param_data_global_clean_sub.RData",sep="/"))
-  load(paste(analysis_dir,input_path,"param_data_FE_clean_sub.RData",sep="/"))
+  message("Getting parameters for max frequency iterations")
   
-  result <- data.frame()
-  # region loop
-  for(i in 1:length(regions)) {
-    
-    r <- regions[i]
-    # load regional demand file for specific scenario
-    load(paste0(analysis_dir,"/",results_path,"/",pr_scen,"/demand_R",r,".RData"))
-    
-    reg_result <- lapply(inc_scen,function(x) {
-      
-      # get demand results for specific income level
-      d_reg_at_income <- demand_reg[demand_reg$Y == x,]
-      # get demand results from high interval and associated parameter samples
-      d_hi_min <- quantile(d_reg_at_income[[fd_type]],probs = hi_interval_min/100)
-      d_hi_max <- quantile(d_reg_at_income[[fd_type]],probs = hi_interval_max/100)
-      d_hi_interval <- d_reg_at_income[d_reg_at_income[[fd_type]] > d_hi_min &
-                                         d_reg_at_income[[fd_type]] <= d_hi_max,]
-      param_global_hi_interval <-
-        subset(param_data_global_clean_sub,iteration %in% d_hi_interval$iteration)
-      param_FE_hi_interval <-
-        subset(param_data_FE_clean_sub,iteration %in% d_hi_interval$iteration &
-                 GCAM_region_ID == r)
-      # join global and FE parameters; this does not guarantee match in iteration
-      # number between the parameters, but for the purpose of taking medians that's ok
-      param_hi_interval <-
-        param_global_hi_interval %>%
-        mutate(staples_FE = param_FE_hi_interval$staples_FE) %>%
-        relocate(staples_FE)
-      # get demand results from low interval and associated parameter samples
-      d_lo_min <- quantile(d_reg_at_income[[fd_type]],probs = lo_interval_min/100)
-      d_lo_max <- quantile(d_reg_at_income[[fd_type]],probs = lo_interval_max/100)
-      d_lo_interval <- d_reg_at_income[d_reg_at_income[[fd_type]] >= d_lo_min &
-                                         d_reg_at_income[[fd_type]] < d_lo_max,]
-      param_global_lo_interval <-
-        subset(param_data_global_clean_sub,iteration %in% d_lo_interval$iteration)
-      param_FE_lo_interval <-
-        subset(param_data_FE_clean_sub,iteration %in% d_lo_interval$iteration &
-                 GCAM_region_ID == r)
-      # join global and FE parameters; this does not guarantee match in iteration
-      # number between the parameters, but for the purpose of taking medians that's ok
-      param_lo_interval <-
-        param_global_lo_interval %>%
-        mutate(staples_FE = param_FE_lo_interval$staples_FE) %>%
-        relocate(staples_FE)
-      # get medians of parameter conditional distributions (should try modes)
-      bind_rows(
-        param_hi_centralval <- param_hi_interval %>%
-          summarize(across(c('staples_FE':'pnscl'),median)) %>%
-          mutate(Y=x,GCAM_region_ID=r,measure="HD") %>%
-          relocate(measure),
-        param_lo_centralval <- param_lo_interval %>%
-          summarize(across(c('staples_FE':'pnscl'),median)) %>%
-          mutate(Y=x,GCAM_region_ID=r,measure="LD") %>%
-          relocate(measure))
-    }) %>%
-      bind_rows() # bind results for each income level together
-    result <- bind_rows(result,reg_result) # accumulate results for regions
+  iters_needed <- iter_table %>%
+    select(all_of(case_cols)) %>%
+    unlist(use.names = FALSE) %>%
+    unique() %>%
+    na.omit()
+  
+  param_data_global_clean_sub <-
+    readRDS(file.path(input_dir, "param_data_global_clean_sub.RDS"))
+  param_data_FE_clean_sub <-
+    readRDS(file.path(input_dir, "param_data_FE_clean_sub.RDS"))
+  
+  tag_tbl <- iter_table %>%
+    select(ID, all_of(case_cols)) %>%
+    pivot_longer(
+      cols      = all_of(case_cols),
+      names_to  = "case",
+      values_to = "iteration"
+    ) %>%
+    filter(!is.na(iteration)) %>%
+    distinct(case, iteration)
+  
+  params_global <- param_data_global_clean_sub %>%
+    filter(iteration %in% iters_needed) %>%
+    inner_join(tag_tbl, by = "iteration") %>%
+    arrange(case, iteration)
+  
+  params_FE <- param_data_FE_clean_sub %>%
+    filter(iteration %in% iters_needed) %>%
+    inner_join(tag_tbl, by = "iteration") %>%
+    arrange(case, iteration, GCAM_region_ID)
+  
+  write.csv(
+    params_global,
+    file.path(results_path, paste0("params_global_", output_stub, "_Qtot.csv")),
+    row.names = FALSE
+  )
+  
+  write.csv(
+    params_FE,
+    file.path(results_path, paste0("params_FE_", output_stub, "_Qtot.csv")),
+    row.names = FALSE
+  )
+  
+  list(params_global = params_global, params_FE = params_FE)
+}
+
+# ------------------------------------------------------------------------------
+
+# Save reduced parameter CSVs for World-level Qtot selected iterations.
+save_world_maxfreq_param_csvs <- function(iter_table, case_cols,
+                                          params_global, params_FE,
+                                          results_path, output_stub,
+                                          world_id = 33) {
+  
+  # Extract the world row (ID == 33)
+  iter_world <- iter_table %>% filter(ID == world_id)
+  if (nrow(iter_world) != 1) {
+    stop("Expected exactly one row with ID == 33 (World).")
   }
-  save(result,file = paste0(analysis_dir,"/",results_path,"/",pr_scen,"/",
-                            "params_HDLD_",fd_type,"_median.RData"))
+  
+  # Build a (case, iteration) table for world-only (skip NAs)
+  world_cases <- iter_world %>%
+    select(all_of(case_cols)) %>%
+    pivot_longer(cols = all_of(case_cols),
+                 names_to = "case",
+                 values_to = "iteration") %>%
+    filter(!is.na(iteration)) %>%
+    distinct(case, iteration)
+  
+  # Subset global params for just these world iterations (Qtot-only cases)
+  params_global_world <- params_global %>%
+    semi_join(world_cases, by = c("case", "iteration")) %>%
+    arrange(case, iteration)
+  
+  # Subset FE params for just these world iterations (Qtot-only cases)
+  params_FE_world <- params_FE %>%
+    semi_join(world_cases, by = c("case", "iteration")) %>%
+    arrange(case, iteration, GCAM_region_ID)
+  
+  # Save reduced CSVs with the "_Qtot_world.csv" tag
+  write.csv(
+    params_global_world,
+    file.path(results_path, paste0("params_global_", output_stub, "_Qtot_world.csv")),
+    row.names = FALSE
+  )
+  
+  write.csv(
+    params_FE_world,
+    file.path(results_path, paste0("params_FE_", output_stub, "_Qtot_world.csv")),
+    row.names = FALSE
+  )
+}
+
+# ------------------------------------------------------------------------------
+
+# Save all-region projections for selected parameter cases and ML parameters.
+save_case_and_ml_projections <- function(iter_table,
+                                         reg_list,
+                                         results_path,
+                                         read_dir,
+                                         scen_case,
+                                         case_cols,
+                                         file_prefix,     # "demand_allregions_" or "demand_diffs_allregions_"
+                                         ml_file_prefix) {# same as file_prefix, but explicit to keep intent clear
+  
+  message("Saving projections for identified parameters and ML")
+  
+  iter_world <- iter_table %>% filter(ID == 33)
+  if (nrow(iter_world) != 1) stop("Expected exactly one row with ID == 33 (World).")
+  
+  # ---- Map case column -> iteration (world row) ----
+  case_to_iter <- iter_world %>%
+    select(all_of(case_cols)) %>%
+    slice(1)
+  
+  iters_cases <- case_to_iter %>%
+    unlist(use.names = TRUE) %>%
+    as.integer()
+  
+  # ---- Identify ML iteration once ----
+  iter_ML <- readRDS(
+    file.path("data", "processed", procdata_dir, param_intervals_dir, "params_ML_intervals_global.RDS")
+  ) %>%
+    filter(measure == "ML") %>%
+    pull(iteration)
+  
+  if (length(iter_ML) != 1 || is.na(iter_ML)) {
+    stop("Expected exactly one non-NA ML iteration.")
+  }
+  
+  # ---- Read each region file, filter to all iterations we will save ----
+  iters_needed <- unique(na.omit(c(iters_cases, iter_ML)))
+  
+  message("  Reading regional files once and filtering to needed iterations")
+  scen_needed <- map_dfr(reg_list, function(r) {
+    readRDS(file.path(read_dir, paste0("demand_R", r, scen_case, ".RDS"))) %>%
+      filter(iteration %in% iters_needed)
+  })
+  
+  # Split for extraction
+  scen_by_iter <- split(scen_needed, scen_needed$iteration)
+  
+  # ---- Save projections for identified parameter cases ----
+  for (cc in case_cols) {
+    
+    it <- iters_cases[[cc]]
+    
+    if (is.na(it)) {
+      message("  No iteration identified for case ", cc)
+      next
+    }
+    
+    cc_clean <- gsub("_Qtot$", "", cc)
+    
+    saveRDS(
+      scen_by_iter[[as.character(it)]],
+      file.path(results_path, paste0(file_prefix, cc_clean, "params.RDS"))
+    )
+  }
+  
+  # ---- Save ML projections ----
+  saveRDS(
+    scen_by_iter[[as.character(iter_ML)]],
+    file.path(results_path, paste0(ml_file_prefix, "MLparams.RDS"))
+  )
 }
 

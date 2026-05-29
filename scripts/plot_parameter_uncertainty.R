@@ -1,3 +1,7 @@
+# Generate plots related to parameter uncertainty: trace plots for MCMC results,
+# parameter marginal density plots, and values of fixed effects across regions. 
+# Writes plots to a single pdf.
+
 # load functions and common definitions
 source("R/common_definitions.R")
 source("R/plot_functions_parameter_uncertainty.R")

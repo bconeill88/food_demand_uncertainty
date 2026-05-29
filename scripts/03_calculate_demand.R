@@ -1,15 +1,14 @@
-# Calculate and save demand and elasticities for cases that require the MCMC
-# ensemble of parameters and GCAM results for the ML parameter values, but nothing
-# else (i.e., don't require GCAM results for other parameters). These consist of 
-# stylized simulations as well as single and ensemble runs driven by GCAM ML price
-# and income paths.
-
-# To Do:
-# Code for all scenarios needs to be updated to use new food demand functions.
-# common_definitions.R needs to be updated to add desired scenarios to run for 
-# this script.
-# If/else statements below may be able to be simplified by mapping single generic
-# food demand function call to the list of scenarios to be run.
+# Use ambrosia to calculate and save demand and elasticities using the MCMC ensemble
+# of parameters and GCAM income and prices when GCAM employs the ML parameter values.
+# Runs are:
+# - Stylized income/price simulations
+# - Single ambrosia scenario driven by GCAM Reference/ML scenario
+# - Ensembles driven by GCAM Reference/ML scenarios with standard or high price conditions
+# - Ensembles used for decomposing results into the effects of price, income, and scale 
+#   parameters.
+#
+# The scenarios/ensembles to be run are set in common_definitions.R in the 
+# scen_list_demand_GCAM_ML variable.
 
 # load functions
 source("R/common_definitions.R")
@@ -81,7 +80,7 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       save_result = TRUE
     )
     
-  # single scenario driven by GCAM ML prices, income, parameters
+  # single scenario driven by GCAM Reference scenario income and prices with ML parameters
   } else if(x == "Ref_ML_gcam_MLparams_bc") {
     
     food.dmnd.ens_bc(
@@ -99,13 +98,8 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
     
   # GCAM scenario ensembles
     
+    # ensemble driven by GCAM Reference scenario income and prices with ML parameters
   } else if(x == "Ref_ML_gcam_ens_bc") {
-    
-    # modifications for small test runs
-    # param_data_global_clean_sub <- param_data_global_clean_sub[sample(nrow(param_data_global_clean_sub), 20),]
-    # param_data_FE_clean_sub <-
-    #   subset(param_data_FE_clean_sub,
-    #          iteration %in% param_data_global_clean_sub$iteration)
     
     food.dmnd.ens_bc(
       globalparams = param_data_global_clean_sub,
@@ -114,13 +108,14 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir, gcam_dir = gcam_results_dir,
       scen = "Ref_ML_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "ens_bc",
       baseyr = base_year,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       save_result = TRUE
     )
        
+    # ensemble driven by GCAM Reference scenario income and high prices with ML parameters
   } else if(x == "Ref_ML_HP_gcam_ens_bc") {
     
     food.dmnd.ens_bc(
@@ -130,13 +125,15 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir, gcam_dir = gcam_results_dir,
       scen = "Ref_ML_HP_gcam",
-      case = "ens_bc",       # file ext: bias corrected ensemble
+      case = "ens_bc",
       baseyr = base_year,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       save_result = TRUE
     )
 
+    # ensemble driven by GCAM Reference scenario income and prices with ML parameters,
+    # varying only price-related parameters
   } else if(x == "Ref_ML_gcam_MLprice_ens_bc") {
     
     # get ML parameter values
@@ -178,13 +175,15 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       regionIDs = reg_list,
       output_dir = procdata_dir, gcam_dir = gcam_results_dir,
       scen = "Ref_ML_gcam",
-      case = "MLprice_ens_bc",       # file ext: bias corrected ensemble
+      case = "MLprice_ens_bc",
       baseyr = base_year,
       Qs_min = Qs_floor,
       Qn_min = Qn_floor,
       save_result = TRUE
     )
     
+    # ensemble driven by GCAM Reference scenario income and prices with ML parameters,
+    # varying only income-related parameters
   } else if(x == "Ref_ML_gcam_MLincome_ens_bc") {
     
     # get ML parameter values
@@ -233,6 +232,8 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       save_result = TRUE
     )
     
+    # ensemble driven by GCAM Reference scenario income and prices with ML parameters,
+    # varying only scale-related parameters
   } else if(x == "Ref_ML_gcam_MLscale_ens_bc") {
     
     # get ML parameter values
@@ -282,6 +283,8 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       save_result = TRUE
     )
     
+    # ensemble driven by GCAM Reference scenario income and high prices with ML parameters,
+    # varying only price-related parameters
   } else if(x == "Ref_ML_HP_gcam_MLprice_ens_bc") {
     
     # get ML parameter values
@@ -330,6 +333,8 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       save_result = TRUE
     )
 
+    # ensemble driven by GCAM Reference scenario income and high prices with ML parameters,
+    # varying only income-related parameters
   } else if(x == "Ref_ML_HP_gcam_MLincome_ens_bc") {
     
     # get ML parameter values
@@ -378,6 +383,8 @@ lapply(scen_list_demand_GCAM_ML, function(x) {
       save_result = TRUE
     )
     
+    # ensemble driven by GCAM Reference scenario income and high prices with ML parameters,
+    # varying only scale-related parameters
   } else if(x == "Ref_ML_HP_gcam_MLscale_ens_bc") {
     
     # get ML parameter values

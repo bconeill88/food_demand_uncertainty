@@ -5,7 +5,6 @@
 # load functions and common definitions
 source("R/common_definitions.R")
 source("R/init_packages.R")
-#source("R/install_ambrosia_function.R")
 
 # install or load packages
 ensure_package(tidyverse)

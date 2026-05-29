@@ -1,3 +1,6 @@
+# Create .csv version of results for the maximum frequencies of iterations falling
+# within demand output ranges. These results are already saved as .RDS files.
+
 library("tidyverse")
 source("R/common_definitions.R")
 

@@ -1,5 +1,5 @@
-# calculate and save demand and elasticities from observations, and plot model
-# vs observations
+# Calculate and save demand and elasticities from observations, plot model
+# vs observations, and create tables of goodness of fit metrics
 
 # load functions
 source("R/common_definitions.R")

@@ -1,15 +1,64 @@
-# Functions supporting the 08_plot_demand_with_intervals.R main script
+# ------------------------------------------------------------------------------
+# Main results plotting helper functions
+# ------------------------------------------------------------------------------
+#
+# Helper functions used by plot_main_results.R to build and save main results
+# figures. These functions support regional, decile, regional/decile, elasticity,
+# price/income, land/water, uncertainty decomposition, bar, scatter, and density
+# plots comparing ensemble results and selected GCAM/ambrosia scenarios.
+#
+# Functions included:
+# - generate_report_names(): Generate standardized PDF report filenames for supported quantity, aggregation, scenario, and plot-style combinations.
+# - generate_ens_path_names(): Generate paths to regional ensemble result directories for absolute and difference outputs across main and decomposition cases.
+# - nice_ymax(): Round an upper y-axis limit up to a specified increment.
+# - nice_limits(): Round lower and upper axis limits outward to a specified increment.
+# - lighten_hex(): Lighten a hex color by blending it toward white.
+# - make_scenario_style_maps(): Construct scenario color and linetype maps from scenario names, model sets, and line roles.
+# - make_band_fill_map(): Construct fill colors and display order for ensemble ribbon bands.
+# - reshape_scenario_long(): Convert scenario output to long format with standardized plotting metadata.
+# - build_ensemble_ribbon_data(): Summarize ensemble draws into range and/or central confidence-interval ribbon data.
+# - build_ci_bound_lines(): Summarize ensemble draws into lower and upper confidence-bound lines for overlay plots.
+# - make_relative_to_ml(): Express line and ribbon values relative to an ML scenario baseline.
+# - plot_regional_comparison(): Build a single-region comparison plot/data frame with three panels, optional ensemble ribbons, and scenario overlays.
+# - plot_regional_comparison_pdf(): Write accumulated regional comparison data to a multi-page PDF with shared style and per-page legends.
+# - plot_regional_elasticity_comparison(): Build a single-region elasticity comparison plot/data frame with ensemble ribbons and scenario overlays.
+# - plot_regional_elasticity_comparison_pdf(): Write accumulated regional elasticity comparison data to a multi-page PDF.
+# - plot_decile_demand_comparison(): Build a single-region, single-decile demand comparison plot/data frame.
+# - plot_decile_demand_comparison_pdf(): Write accumulated decile demand comparison data to a PDF with one page per region.
+# - plot_region_and_decile_demand_comparison(): Build comparison data for regional total, decile 1, and decile 10 on the same plot layout.
+# - plot_region_and_decile_demand_comparison_pdf(): Write combined regional/decile demand comparison data to a PDF with one page per region.
+# - build_year_ci_bar_data(): Summarize one target year into regional medians and confidence intervals for bar/range plots.
+# - plot_region_ci_bars_one_year_df(): Create one cross-region confidence-interval bar plot for one target year and one value column.
+# - plot_region_ci_bars_pdf(): Write regional confidence-interval bar plots to a multi-page PDF.
+# - plot_regional_uncertainty_decomposition(): Build regional uncertainty decomposition data/plot showing full ensemble CI, ML baseline, and sub-ensemble CI bounds.
+# - build_scatter_pair_data(): Build paired GCAM-versus-ambrosia scatter data for one scenario pair.
+# - build_scatter_limits(): Compute x and y limits by demand type for scatter plots.
+# - plot_scenario_scatter(): Build a single-region GCAM-versus-ambrosia scatter plot/data frame.
+# - plot_scenario_scatter_pdf(): Write accumulated regional scatter data to a multi-page PDF.
+# - plot_scenario_scatter_decile_pdf(): Write accumulated decile scatter data to a multi-page PDF.
+# - calc_scatter_within_pct(): Calculate the share of scatter points within specified percent differences from GCAM values.
+# - plot_scatter_within_pct(): Plot percent-within-threshold summaries for regional and decile scatter results.
+# - calc_scatter_within_abs(): Calculate the share of scatter points within specified absolute differences from GCAM values.
+# - plot_scatter_within_abs(): Plot absolute-within-threshold summaries for regional and decile scatter results.
+# - add_density_source_groups(): Add pooled and optional decile-1 source groups for density plotting.
+# - calc_scatter_pct_diff_density(): Calculate percent differences between ambrosia and GCAM scatter values for density plots.
+# - plot_scatter_pct_diff_density(): Plot density curves for percent differences between ambrosia and GCAM values.
+# - calc_scatter_abs_diff_density(): Calculate absolute differences between ambrosia and GCAM scatter values for density plots.
+# - plot_scatter_abs_diff_density(): Plot density curves for absolute differences between ambrosia and GCAM values.
+#
+# Notes:
+# - Plotting functions generally return plotting data when return_data = TRUE,
+#   and otherwise return or write ggplot/PDF outputs.
+# - Scenario overlay helpers use two model/style groups (set1 and set2) and
+#   semantic line roles such as solid, dashed_dark, and dotted_light.
+# ------------------------------------------------------------------------------
 
 # =============================================================================
-# Helper utilities for the main plotting script
+# File setup helpers
 # =============================================================================
 
-# Helper: generate a named list of pdf report names for all possible combinations
-# of variants (many will not be used, but easier to generate them systematically)
-# "_plain" indicates only range, CI, and ambrosia ML scenario are included; 
-# "_plain_compare" also includes the GCAM ML scenario so the two ML scenarios can 
-# be compared. 
-# "_std" indicates additional ambrosia and GCAM scenarios are included.
+# Generate standardized PDF report filenames for supported quantity, aggregation, 
+# scenario, and plot-style combinations.
 generate_report_names <- function() {
   
   # ---- Define naming dimensions -------------------------------------------------
@@ -77,7 +126,7 @@ generate_report_names <- function() {
   out[order(names(out))]
 }
 
-# Helper: generate set of path names for ensemble results files
+# Generate paths to regional ensemble result directories for absolute and difference outputs across main and decomposition cases.
 generate_ens_path_names <- function() {
   # common prefix
   base_proc <- file.path("data", "processed", procdata_dir)
@@ -107,23 +156,169 @@ generate_ens_path_names <- function() {
 }
 
 # =============================================================================
-# Helper functions for the plotting functions located further below
+# General plotting helpers
 # =============================================================================
 
-# Helper: round up ymax to a nice increment; for use in pdf creation with plots
-# sharing same ymax.
+# Round an upper y-axis limit up to a specified increment.
 nice_ymax <- function(x, step = 0.25) {
   if (is.na(x) || !is.finite(x)) return(NA_real_)
   ceiling(x / step) * step
 }
 
-# Helper: round limits outward to a "nice" increment (works for negative values too)
+# Round lower and upper axis limits outward to a specified increment.
 nice_limits <- function(xmin, xmax, step = 0.1) {
   if (!is.finite(xmin) || !is.finite(xmax)) return(c(NA_real_, NA_real_))
   c(floor(xmin / step) * step, ceiling(xmax / step) * step)
 }
 
-# Helper: build ensemble uncertainty ribbons (range + central CI, or CI-only)
+# Lighten a hex color by blending it toward white.
+lighten_hex <- function(hex, amount = 0.45) {
+  # amount: 0 = no change, 1 = white
+  rgb <- grDevices::col2rgb(hex) / 255
+  rgb2 <- rgb + (1 - rgb) * amount
+  grDevices::rgb(rgb2[1,], rgb2[2,], rgb2[3,])
+}
+
+# Construct scenario color and linetype maps from scenario names, model sets, and line roles.
+make_scenario_style_maps <- function(
+    p_lines,
+    set1_col = "#e6550d",
+    set2_col = "#3182bd",
+    light_amount = 0.45
+) {
+  
+  scen_levels <- sort(unique(p_lines$scenario_name))
+  scen_levels <- scen_levels[!is.na(scen_levels)]
+  
+  # ---- Linetypes (map your semantic roles to ggplot linetypes) ----
+  role_to_lty <- function(role) {
+    if (is.na(role) || role == "") return("solid")
+    switch(
+      role,
+      "solid"         = "solid",
+      "dashed_dark"   = "dashed",
+      "dashed_light"  = "longdash",
+      "dotted_dark"   = "dotted",
+      "dotted_light"  = "dotdash",
+      # fallback for any legacy roles you still pass
+      "dashed"        = "dashed",
+      "dotted"        = "dotted",
+      "solid"
+    )
+  }
+  
+  lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
+  lr_tbl <- p_lines %>%
+    filter(!is.na(line_role)) %>%
+    distinct(scenario_name, line_role)
+  
+  if (nrow(lr_tbl) > 0) {
+    lt_map[lr_tbl$scenario_name] <- vapply(lr_tbl$line_role, role_to_lty, character(1))
+  }
+  
+  # ---- Colors (set1 orange, set2 blue; light/dark shades via role) ----
+  # Base by set membership
+  model_by_scen <- p_lines %>%
+    filter(!is.na(scenario_name), !is.na(model)) %>%
+    group_by(scenario_name) %>%
+    summarise(model = first(model), .groups = "drop")
+  
+  base_col <- setNames(rep(set1_col, length(scen_levels)), scen_levels)
+  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
+  if (length(set2_names) > 0) {
+    base_col[intersect(names(base_col), set2_names)] <- set2_col
+  }
+  
+  # Lighten if role ends with "_light"
+  role_by_scen <- p_lines %>%
+    filter(!is.na(scenario_name)) %>%
+    group_by(scenario_name) %>%
+    summarise(line_role = first(na.omit(line_role)), .groups = "drop")
+  
+  color_map <- base_col
+  if (nrow(role_by_scen) > 0) {
+    light_names <- role_by_scen$scenario_name[grepl("_light$", role_by_scen$line_role)]
+    if (length(light_names) > 0) {
+      color_map[intersect(names(color_map), light_names)] <-
+        vapply(base_col[intersect(names(base_col), light_names)],
+               lighten_hex, character(1), amount = light_amount)
+    }
+  }
+  
+  list(color_map = color_map, lt_map = lt_map)
+}
+
+# Construct fill colors and display order for ensemble ribbon bands.
+make_band_fill_map <- function(p_ribbon,
+                               range_col = "grey85",
+                               other_col = "grey70") {
+  
+  band_levels <- unique(p_ribbon$band)
+  band_levels <- band_levels[!is.na(band_levels)]
+  band_levels <- c("Range", setdiff(band_levels, "Range"))
+  
+  fill_values <- setNames(rep(other_col, length(band_levels)), band_levels)
+  if ("Range" %in% names(fill_values)) fill_values["Range"] <- range_col
+  
+  list(
+    band_levels = band_levels,
+    fill_values = fill_values
+  )
+}
+
+# Convert scenario output to long format with standardized plotting metadata.
+reshape_scenario_long <- function(
+    df,
+    scen_name,
+    model_set,
+    line_role,
+    reg_num,
+    year_min,
+    demand_cols,
+    demand_levels,
+    consumer_group = NULL,
+    consumer_col = "gcam-consumer",
+    region_col = "GCAM_region_ID"
+) {
+  if (is.null(df) || is.null(scen_name)) return(NULL)
+  
+  reg_num_int <- as.integer(reg_num)
+  
+  out <- df %>%
+    mutate(
+      !!region_col := as.integer(.data[[region_col]])
+    ) %>%
+    filter(
+      year >= year_min,
+      .data[[region_col]] == reg_num_int
+    )
+  
+  if (!is.null(consumer_group) && consumer_col %in% names(out)) {
+    out <- out %>% filter(.data[[consumer_col]] == consumer_group)
+  }
+  
+  out %>%
+    select(all_of(c(region_col, "year", demand_cols))) %>%
+    pivot_longer(
+      cols = all_of(demand_cols),
+      names_to = "demand_type",
+      values_to = "demand_value"
+    ) %>%
+    mutate(
+      GCAM_region_ID = reg_num_int,
+      demand_type = factor(demand_type, levels = demand_levels),
+      consumer_group = consumer_group,
+      scenario_name = scen_name,
+      model = model_set,
+      line_role = line_role,
+      iteration = NA_integer_,
+      band = NA_character_,
+      ribbon_ymin = NA_real_,
+      ribbon_ymax = NA_real_
+    )
+}
+
+# Summarize ensemble draws into range and/or central confidence-interval ribbon data.
 build_ensemble_ribbon_data <- function(
     df,
     reg_num,
@@ -215,7 +410,7 @@ build_ensemble_ribbon_data <- function(
   )
 }
 
-# Helper: CI bound lines (lower + upper) as scenario lines, with one legend entry
+# Summarize ensemble draws into lower and upper confidence-bound lines for overlay plots.
 build_ci_bound_lines <- function(
     df,
     reg_num,
@@ -300,213 +495,7 @@ build_ci_bound_lines <- function(
   )
 }
 
-# Helper: 
-reshape_scenario_long <- function(
-    df,
-    scen_name,
-    model_set,
-    line_role,
-    reg_num,
-    year_min,
-    demand_cols,
-    demand_levels,
-    consumer_group = NULL,
-    consumer_col = "gcam-consumer",
-    region_col = "GCAM_region_ID"
-) {
-  if (is.null(df) || is.null(scen_name)) return(NULL)
-  
-  reg_num_int <- as.integer(reg_num)
-  
-  out <- df %>%
-    mutate(
-      !!region_col := as.integer(.data[[region_col]])
-    ) %>%
-    filter(
-      year >= year_min,
-      .data[[region_col]] == reg_num_int
-    )
-  
-  if (!is.null(consumer_group) && consumer_col %in% names(out)) {
-    out <- out %>% filter(.data[[consumer_col]] == consumer_group)
-  }
-  
-  out %>%
-    select(all_of(c(region_col, "year", demand_cols))) %>%
-    pivot_longer(
-      cols = all_of(demand_cols),
-      names_to = "demand_type",
-      values_to = "demand_value"
-    ) %>%
-    mutate(
-      GCAM_region_ID = reg_num_int,
-      demand_type = factor(demand_type, levels = demand_levels),
-      consumer_group = consumer_group,
-      scenario_name = scen_name,
-      model = model_set,
-      line_role = line_role,
-      iteration = NA_integer_,
-      band = NA_character_,
-      ribbon_ymin = NA_real_,
-      ribbon_ymax = NA_real_
-    )
-}
-
-# Helper: lighten a hex color by blending toward white
-lighten_hex <- function(hex, amount = 0.45) {
-  # amount: 0 = no change, 1 = white
-  rgb <- grDevices::col2rgb(hex) / 255
-  rgb2 <- rgb + (1 - rgb) * amount
-  grDevices::rgb(rgb2[1,], rgb2[2,], rgb2[3,])
-}
-
-# Helper: scenario style maps (colors + linetypes), supports *_dark / *_light roles
-make_scenario_style_maps <- function(
-    p_lines,
-    set1_col = "#e6550d",
-    set2_col = "#3182bd",
-    light_amount = 0.45
-) {
-  
-  scen_levels <- sort(unique(p_lines$scenario_name))
-  scen_levels <- scen_levels[!is.na(scen_levels)]
-  
-  # ---- Linetypes (map your semantic roles to ggplot linetypes) ----
-  role_to_lty <- function(role) {
-    if (is.na(role) || role == "") return("solid")
-    switch(
-      role,
-      "solid"         = "solid",
-      "dashed_dark"   = "dashed",
-      "dashed_light"  = "longdash",
-      "dotted_dark"   = "dotted",
-      "dotted_light"  = "dotdash",
-      # fallback for any legacy roles you still pass
-      "dashed"        = "dashed",
-      "dotted"        = "dotted",
-      "solid"
-    )
-  }
-  
-  lt_map <- setNames(rep("solid", length(scen_levels)), scen_levels)
-  lr_tbl <- p_lines %>%
-    filter(!is.na(line_role)) %>%
-    distinct(scenario_name, line_role)
-  
-  if (nrow(lr_tbl) > 0) {
-    lt_map[lr_tbl$scenario_name] <- vapply(lr_tbl$line_role, role_to_lty, character(1))
-  }
-  
-  # ---- Colors (set1 orange, set2 blue; light/dark shades via role) ----
-  # Base by set membership
-  model_by_scen <- p_lines %>%
-    filter(!is.na(scenario_name), !is.na(model)) %>%
-    group_by(scenario_name) %>%
-    summarise(model = first(model), .groups = "drop")
-  
-  base_col <- setNames(rep(set1_col, length(scen_levels)), scen_levels)
-  set2_names <- model_by_scen$scenario_name[model_by_scen$model == "set2"]
-  if (length(set2_names) > 0) {
-    base_col[intersect(names(base_col), set2_names)] <- set2_col
-  }
-  
-  # Lighten if role ends with "_light"
-  role_by_scen <- p_lines %>%
-    filter(!is.na(scenario_name)) %>%
-    group_by(scenario_name) %>%
-    summarise(line_role = first(na.omit(line_role)), .groups = "drop")
-  
-  color_map <- base_col
-  if (nrow(role_by_scen) > 0) {
-    light_names <- role_by_scen$scenario_name[grepl("_light$", role_by_scen$line_role)]
-    if (length(light_names) > 0) {
-      color_map[intersect(names(color_map), light_names)] <-
-        vapply(base_col[intersect(names(base_col), light_names)],
-               lighten_hex, character(1), amount = light_amount)
-    }
-  }
-  
-  list(color_map = color_map, lt_map = lt_map)
-}
-
-# Helper: 
-make_band_fill_map <- function(p_ribbon,
-                               range_col = "grey85",
-                               other_col = "grey70") {
-  
-  band_levels <- unique(p_ribbon$band)
-  band_levels <- band_levels[!is.na(band_levels)]
-  band_levels <- c("Range", setdiff(band_levels, "Range"))
-  
-  fill_values <- setNames(rep(other_col, length(band_levels)), band_levels)
-  if ("Range" %in% names(fill_values)) fill_values["Range"] <- range_col
-  
-  list(
-    band_levels = band_levels,
-    fill_values = fill_values
-  )
-}
-
-# Helper: compute per-region quantiles (CI and optionally range) for a single year;
-# for use with bar plots of demand range by region
-build_year_ci_bar_data <- function(
-    df,
-    target_year,
-    value_col,                      # e.g., "Qs.region", "Qn.region", "Qtot.region", or a diff variable
-    ci_level = 0.90,
-    include_range = FALSE,
-    consumer_col = "gcam-consumer",
-    consumer_value = "FoodDemand_Group1",
-    region_col = "GCAM_region_ID",
-    iteration_col = "iteration"
-) {
-  
-  stopifnot(ci_level > 0, ci_level <= 1)
-  stopifnot(value_col %in% names(df))
-  
-  alpha <- (1 - ci_level) / 2
-  
-  out <- df %>%
-    filter(.data$year == target_year)
-  
-  # optional filter for consumer group if column exists
-  if (consumer_col %in% names(out)) {
-    out <- out %>% filter(.data[[consumer_col]] == consumer_value)
-  }
-  
-  # guardrails
-  required_cols <- c(region_col, iteration_col, "year", value_col)
-  missing_cols  <- setdiff(required_cols, names(out))
-  if (length(missing_cols) > 0) {
-    stop("build_year_ci_bar_data(): missing columns: ",
-         paste(missing_cols, collapse = ", "))
-  }
-  
-  # summarize across iterations within region for the target year
-  sum_ci <- out %>%
-    group_by(across(all_of(region_col))) %>%
-    summarise(
-      n_draws = n(),
-      med = stats::quantile(.data[[value_col]], probs = 0.5, na.rm = TRUE, names = FALSE),
-      lo  = stats::quantile(.data[[value_col]], probs = alpha, na.rm = TRUE, names = FALSE),
-      hi  = stats::quantile(.data[[value_col]], probs = 1 - alpha, na.rm = TRUE, names = FALSE),
-      ymin = if (include_range) min(.data[[value_col]], na.rm = TRUE) else NA_real_,
-      ymax = if (include_range) max(.data[[value_col]], na.rm = TRUE) else NA_real_,
-      .groups = "drop"
-    ) %>%
-    rename(GCAM_region_ID = all_of(region_col)) %>%
-    mutate(
-      GCAM_region_ID = as.integer(GCAM_region_ID),
-      target_year    = as.integer(target_year),
-      value_col      = value_col,
-      ci_level       = ci_level,
-      ci_label       = paste0(round(ci_level * 100), "% CI")
-    )
-  
-  sum_ci
-}
-
-# Helper: convert plot data to be relative to ML (ML becomes 0)
+# Express line and ribbon values relative to an ML scenario baseline.
 make_relative_to_ml <- function(p_all, ml_scenario_name) {
   
   # Extract ML baseline by year and demand_type
@@ -531,49 +520,12 @@ make_relative_to_ml <- function(p_all, ml_scenario_name) {
     select(-ml_value)
 }
 
-# Helper: compute separate x and y limits by demand_type
-build_scatter_limits <- function(df, x_step = NULL, y_step = NULL) {
-  
-  lims <- df %>%
-    group_by(demand_type) %>%
-    summarise(
-      x_min = min(x_value, na.rm = TRUE),
-      x_max = max(x_value, na.rm = TRUE),
-      y_min = min(y_value, na.rm = TRUE),
-      y_max = max(y_value, na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  if (!is.null(x_step)) {
-    lims <- lims %>%
-      mutate(
-        x_min = floor(x_min / x_step) * x_step,
-        x_max = ceiling(x_max / x_step) * x_step
-      )
-  }
-  
-  if (!is.null(y_step)) {
-    lims <- lims %>%
-      mutate(
-        y_min = floor(y_min / y_step) * y_step,
-        y_max = ceiling(y_max / y_step) * y_step
-      )
-  }
-  
-  lims
-}
-
 # =============================================================================
-# Regional demand comparison plots (range + CI ribbons + scenario overlays)
+# Regional demand, price, and land/water plots
 # =============================================================================
 
-# Regional demand: single-region plot that shows regional demand over time with
-# separate panels for Qs, Qn, and Qtotal, for a sub-sample of the ambrosia
-# ensemble. Optionally, it also includes three single scenarios: a reference
-# case as a solid line, and alternative scenarios (such as high and low demand) as 
-# dashed and dotted lines. Single scenarios are specified to be either from GCAM or 
-# ambrosia and scenario data is assumed to contain both, using _gcam and _amb variable
-# name extensions.
+# Build a single-region comparison plot/data frame with three panels, optional ensemble 
+# ribbons, and scenario overlays.
 plot_regional_comparison <- function(
     demand_reg = NULL,
     reg_num,
@@ -744,11 +696,8 @@ plot_regional_comparison <- function(
   gg
 }
 
-# Regional demand: multi-page PDF; takes data frame of plots produced by
-# plot_regional_demand_comparison and combines them into a single multi-region pdf,
-# with each region labeled and a single legend per page. Currently legend is correct
-# except all legend keys have thin lines, when the GCAM scenarios should have thick
-# lines
+# Write accumulated regional comparison data to a multi-page PDF with shared style 
+# and per-page legends.
 plot_regional_comparison_pdf <- function(
     p_all,
     region_mapping,
@@ -983,18 +932,11 @@ plot_regional_comparison_pdf <- function(
 }
 
 # =============================================================================
-# Regional elasticity comparison plots (range + CI ribbons + scenario overlays)
+# Regional elasticity plots
 # =============================================================================
 
-# Regional elasticities: single-region plot that shows uncertainty in regional price 
-# and income elasticities over time with separate panels for own- and cross-price 
-# elasticities and for income elasticities, for staples and non-staples. Optionally, 
-# it also includes up to six scenarios: a reference case as a solid line, and 
-# alternative scenarios (such as high and low demand) as dashed and dotted lines. 
-# Single scenarios are organized in two groups of three, one that plots in blue and 
-# one in orange.
-
-# Regional elasticities: single-region builder (range + CI ribbons + scenario overlays)
+# Build a single-region elasticity comparison plot/data frame with ensemble ribbons 
+# and scenario overlays.
 plot_regional_elasticity_comparison <- function(
     elast_reg,                        # regional ensemble (iterations)
     reg_num,
@@ -1173,9 +1115,7 @@ plot_regional_elasticity_comparison <- function(
     labs(x = "Year", y = y_label, color = "Scenario", linetype = "Scenario")
 }
 
-# Regional elasticities: multi-page PDF; takes data frame of plots produced by
-# plot_regional_elasticity_comparison and combines them into a single multi-region pdf,
-# with each region labeled and a single legend per page.
+# Write accumulated regional elasticity comparison data to a multi-page PDF.
 plot_regional_elasticity_comparison_pdf <- function(
     p_all,
     region_mapping,
@@ -1363,9 +1303,10 @@ plot_regional_elasticity_comparison_pdf <- function(
 }
 
 # =============================================================================
-# Decile demand comparison plots (range + CI ribbons + scenario overlays)
+# Decile and combined regional/decile demand plots
 # =============================================================================
 
+# Build a single-region, single-decile demand comparison plot/data frame.
 plot_decile_demand_comparison <- function(
     demand_reg,
     reg_num,
@@ -1555,6 +1496,7 @@ plot_decile_demand_comparison <- function(
     )
 }
 
+# Write accumulated decile demand comparison data to a PDF with one page per region.
 plot_decile_demand_comparison_pdf <- function(
     p_all,
     region_mapping,
@@ -1739,10 +1681,7 @@ plot_decile_demand_comparison_pdf <- function(
   dev.off()
 }
 
-# =============================================================================
-# Combined region/decile demand comparison plots (range + CI ribbons + scenario overlays)
-# =============================================================================
-
+# Build comparison data for regional total, decile 1, and decile 10 on the same plot layout.
 plot_region_and_decile_demand_comparison <- function(
     demand_reg,
     reg_num,
@@ -1990,6 +1929,7 @@ plot_region_and_decile_demand_comparison <- function(
   out
 }
 
+# Write combined regional/decile demand comparison data to a PDF with one page per region.
 plot_region_and_decile_demand_comparison_pdf <- function(
     p_all,
     region_mapping,
@@ -2156,12 +2096,68 @@ plot_region_and_decile_demand_comparison_pdf <- function(
 }
 
 # =============================================================================
-# Regional demand uncertainty bar plots 
+# Regional uncertainty bar plots
 # =============================================================================
 
-# Cross-region CI bar plot for a single year (returns a ggplot)
-# This function is called by the pdf wrapper below. Title is generated 
-# automatically from value_col + year + ci_label.
+# Summarize one target year into regional medians and confidence intervals for bar/range plots.
+build_year_ci_bar_data <- function(
+    df,
+    target_year,
+    value_col,                      # e.g., "Qs.region", "Qn.region", "Qtot.region", or a diff variable
+    ci_level = 0.90,
+    include_range = FALSE,
+    consumer_col = "gcam-consumer",
+    consumer_value = "FoodDemand_Group1",
+    region_col = "GCAM_region_ID",
+    iteration_col = "iteration"
+) {
+  
+  stopifnot(ci_level > 0, ci_level <= 1)
+  stopifnot(value_col %in% names(df))
+  
+  alpha <- (1 - ci_level) / 2
+  
+  out <- df %>%
+    filter(.data$year == target_year)
+  
+  # optional filter for consumer group if column exists
+  if (consumer_col %in% names(out)) {
+    out <- out %>% filter(.data[[consumer_col]] == consumer_value)
+  }
+  
+  # guardrails
+  required_cols <- c(region_col, iteration_col, "year", value_col)
+  missing_cols  <- setdiff(required_cols, names(out))
+  if (length(missing_cols) > 0) {
+    stop("build_year_ci_bar_data(): missing columns: ",
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # summarize across iterations within region for the target year
+  sum_ci <- out %>%
+    group_by(across(all_of(region_col))) %>%
+    summarise(
+      n_draws = n(),
+      med = stats::quantile(.data[[value_col]], probs = 0.5, na.rm = TRUE, names = FALSE),
+      lo  = stats::quantile(.data[[value_col]], probs = alpha, na.rm = TRUE, names = FALSE),
+      hi  = stats::quantile(.data[[value_col]], probs = 1 - alpha, na.rm = TRUE, names = FALSE),
+      ymin = if (include_range) min(.data[[value_col]], na.rm = TRUE) else NA_real_,
+      ymax = if (include_range) max(.data[[value_col]], na.rm = TRUE) else NA_real_,
+      .groups = "drop"
+    ) %>%
+    rename(GCAM_region_ID = all_of(region_col)) %>%
+    mutate(
+      GCAM_region_ID = as.integer(GCAM_region_ID),
+      target_year    = as.integer(target_year),
+      value_col      = value_col,
+      ci_level       = ci_level,
+      ci_label       = paste0(round(ci_level * 100), "% CI")
+    )
+  
+  sum_ci
+}
+
+# Create one cross-region confidence-interval bar plot for one target year and one value column.
 plot_region_ci_bars_one_year_df <- function(
     df_year,                          # already filtered to one target year
     value_col,
@@ -2270,8 +2266,7 @@ plot_region_ci_bars_one_year_df <- function(
     )
 }
 
-# PDF wrapper: takes list of already-filtered dfs (one per year). Produces a 
-# single pdf with one page per list element, in list order.
+# Write regional confidence-interval bar plots to a multi-page PDF.
 plot_region_ci_bars_pdf <- function(
     df_list,
     value_cols = "Qtot.region",
@@ -2338,11 +2333,11 @@ plot_region_ci_bars_pdf <- function(
 }
 
 # =============================================================================
-# Uncertainty decomposition plots (CI ribbon + upper/lower bound overlays)
+# Uncertainty decomposition plots
 # =============================================================================
 
-# Regional uncertainty decomposition: CI ribbon for full ensemble + ML + CI bounds 
-# for 3 sub-ensembles
+# Build regional uncertainty decomposition data/plot showing full ensemble CI, ML 
+# baseline, and sub-ensemble CI bounds.
 plot_regional_uncertainty_decomposition <- function(
     demand_full,
     reg_num,
@@ -2497,12 +2492,11 @@ plot_regional_uncertainty_decomposition <- function(
     theme_minimal(base_size = 13)
 }
 
-
 # =============================================================================
-# Scenario scatter plots: GCAM vs ambrosia
+# GCAM vs ambrosia scatter plots
 # =============================================================================
 
-# Helper: build paired scatter data for one GCAM / ambrosia scenario pair
+# Build paired GCAM-versus-ambrosia scatter data for one scenario pair.
 build_scatter_pair_data <- function(
     gcam_df,
     amb_df,
@@ -2606,7 +2600,39 @@ build_scatter_pair_data <- function(
   out
 }
 
-# Single-region scatter builder
+# Compute x and y limits by demand type for scatter plots.
+build_scatter_limits <- function(df, x_step = NULL, y_step = NULL) {
+  
+  lims <- df %>%
+    group_by(demand_type) %>%
+    summarise(
+      x_min = min(x_value, na.rm = TRUE),
+      x_max = max(x_value, na.rm = TRUE),
+      y_min = min(y_value, na.rm = TRUE),
+      y_max = max(y_value, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  if (!is.null(x_step)) {
+    lims <- lims %>%
+      mutate(
+        x_min = floor(x_min / x_step) * x_step,
+        x_max = ceiling(x_max / x_step) * x_step
+      )
+  }
+  
+  if (!is.null(y_step)) {
+    lims <- lims %>%
+      mutate(
+        y_min = floor(y_min / y_step) * y_step,
+        y_max = ceiling(y_max / y_step) * y_step
+      )
+  }
+  
+  lims
+}
+
+# Build a single-region GCAM-versus-ambrosia scatter plot/data frame.
 plot_scenario_scatter <- function(
     reg_num,
     value_cols,
@@ -2775,7 +2801,7 @@ plot_scenario_scatter <- function(
   gg
 }
 
-# Multi-region scatter PDF from accumulated p_all
+# Write accumulated regional scatter data to a multi-page PDF.
 plot_scenario_scatter_pdf <- function(
     p_all,
     region_mapping,
@@ -2931,6 +2957,7 @@ plot_scenario_scatter_pdf <- function(
   invisible(NULL)
 }
 
+# Write accumulated decile scatter data to a multi-page PDF.
 plot_scenario_scatter_decile_pdf <- function(
     p_all,
     region_mapping,
@@ -3079,7 +3106,11 @@ plot_scenario_scatter_decile_pdf <- function(
   invisible(NULL)
 }
 
-# Summarize scatter data into "% within X% of GCAM"
+# =============================================================================
+# Scatter accuracy summaries
+# =============================================================================
+
+# Calculate the share of scatter points within specified percent differences from GCAM values.
 calc_scatter_within_pct <- function(
     scatter_df,
     thresholds = c(1, 2, 3, 4, 5, 10, 15),
@@ -3129,7 +3160,7 @@ calc_scatter_within_pct <- function(
     select(demand_type, source_type, curve_label, threshold_pct, pct_within, n)
 }
 
-# Plot "% within X%" curves for regional + decile scatter results
+# Plot percent-within-threshold summaries for regional and decile scatter results.
 plot_scatter_within_pct <- function(
     scatter_reg,
     scatter_dec,
@@ -3212,7 +3243,7 @@ plot_scatter_within_pct <- function(
   invisible(p)
 }
 
-# Summarize scatter data into "% within absolute interval around GCAM"
+# Calculate the share of scatter points within specified absolute differences from GCAM values.
 calc_scatter_within_abs <- function(
     scatter_df,
     thresholds = c(0.01, 0.05, 0.1, 0.2, 0.3),
@@ -3262,7 +3293,7 @@ calc_scatter_within_abs <- function(
     select(demand_type, source_type, curve_label, threshold_abs, pct_within, n)
 }
 
-# Plot "% within absolute interval" curves for regional + decile scatter results
+# Plot absolute-within-threshold summaries for regional and decile scatter results.
 plot_scatter_within_abs <- function(
     scatter_reg,
     scatter_dec,
@@ -3345,7 +3376,11 @@ plot_scatter_within_abs <- function(
   invisible(p)
 }
 
-# Add pooled source curve, and optionally an extra decile-1 curve
+# =============================================================================
+# Density plots of GCAM–ambrosia differences
+# =============================================================================
+
+# Add pooled and optional decile-1 source groups for density plotting.
 add_density_source_groups <- function(
     df,
     source_label,
@@ -3373,8 +3408,7 @@ add_density_source_groups <- function(
   bind_rows(out_main, out_dec1)
 }
 
-# Summarize scatter data into percent differences relative to GCAM
-# pct_diff = 100 * (ambrosia - GCAM) / GCAM
+# Calculate percent differences between ambrosia and GCAM scatter values for density plots.
 calc_scatter_pct_diff_density <- function(
     scatter_df,
     source_label = c("Regional", "Decile"),
@@ -3432,7 +3466,7 @@ calc_scatter_pct_diff_density <- function(
     select(demand_type, source_type, curve_label, pct_diff)
 }
 
-# Plot density of percent differences for regional + decile scatter results
+# Plot density curves for percent differences between ambrosia and GCAM values.
 plot_scatter_pct_diff_density <- function(
     scatter_reg,
     scatter_dec,
@@ -3553,8 +3587,7 @@ plot_scatter_pct_diff_density <- function(
   invisible(p)
 }
 
-# Summarize scatter data into absolute differences in demand units
-# diff_value = ambrosia - GCAM
+# Calculate absolute differences between ambrosia and GCAM scatter values for density plots.
 calc_scatter_abs_diff_density <- function(
     scatter_df,
     source_label = c("Regional", "Decile"),
@@ -3593,7 +3626,7 @@ calc_scatter_abs_diff_density <- function(
     select(demand_type, source_type, curve_label, diff_value)
 }
 
-# Plot density of absolute differences for regional + decile scatter results
+# Plot density curves for absolute differences between ambrosia and GCAM values.
 plot_scatter_abs_diff_density <- function(
     scatter_reg,
     scatter_dec,
@@ -3705,5 +3738,4 @@ plot_scatter_abs_diff_density <- function(
   
   invisible(p)
 }
-
 

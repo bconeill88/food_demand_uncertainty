@@ -1,11 +1,13 @@
-# Plot comparison of demand for the HD/LD scenarios (regional and global parameters)
-# to a sample of the demand ensemble, both for regional demand and demand by decile,
-# and optionally impose minimum demand constraint
+# Plot main figures, including demand by region or decile, elasticities, prices,
+# land/water outcomes, bar plots of demand ranges, scatter plots of ambrosia v
+# gcam outcomes, density plots of demand differences, and decomposition of demand.
+#
+# Also create tables of goodness of fit metrics.
 
 # Load functions
 source("R/common_definitions.R")
 source("R/init_packages.R")
-source("R/demand_with_intervals_plot_functions.R")
+source("R/plot_functions_main_results.R")
 source("R/model_fit_functions.R")
 
 # Make sure packages are installed/loaded
@@ -15,7 +17,7 @@ ensure_package(ggh4x)
 ensure_package(patchwork)
 
 # Indicate whether to create regional or decile demand plots over time, bar plots
-# in a given target year
+# in a given target year. Set all of these to TRUE to produce all plots.
 DEMAND_REG <- FALSE
 DEMAND_DEC <- FALSE
 DEMAND_REG_DEC <- FALSE
