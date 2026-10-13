@@ -581,14 +581,17 @@ food.dmnd.wrapper <- function(globalparams, regparams, biasdata, Qs_min, Qn_min,
         biasdata_reg_iter <- biasdata_reg_iter[consumer_order, ]
       }
       
-      # calculate demand for this iteration
-      demand_reg_iter <- food.dmnd(inputdata_region$Ps, inputdata_region$Pn, 
-                                   inputdata_region$Y, params = param_structure,
-                                   rgn = region_id, # rgn argument, not needed
-                                   regparams_reg_iter$staples_FE, 
-                                   biasdata_reg_iter$RBs, 
-                                   biasdata_reg_iter$RBn,
-                                   Qs_min, Qn_min) # %>%
+      # Calculate demand; ambrosia applies the floors internally
+      demand_reg_iter <- food.dmnd(
+        Ps = inputdata_region$Ps,
+        Pn = inputdata_region$Pn,
+        Y = inputdata_region$Y,
+        params = param_structure,
+        rgn = region_id,
+        staples_FE = regparams_reg_iter$staples_FE,
+        bias_adder_s = biasdata_reg_iter$RBs,
+        bias_adder_ns = biasdata_reg_iter$RBn
+      )
       
       demand_reg_iter <- demand_reg_iter %>%
         
