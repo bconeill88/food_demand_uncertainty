@@ -40,20 +40,21 @@ clean_data_dir <- "clean_data"
 
 # subdirectory of "procdata_dir" to extract results from
 # for base year 2021
-procdata_subdir_RefMLgcam <- "Ref_ML_gcam/by2021/ens_bc_combined_20260216_030130"
-procdata_subdir_RefMLgcam_price <- 
-  "Ref_ML_gcam/by2021/ens_bc_combined_MLprice_20260218_121355"
-procdata_subdir_RefMLgcam_income <- 
-  "Ref_ML_gcam/by2021/ens_bc_combined_MLincome_20260218_122105"
-procdata_subdir_RefMLgcam_scale <- 
-  "Ref_ML_gcam/by2021/ens_bc_combined_MLscale_20260218_122355"
-procdata_subdir_RefMLHPgcam <- "Ref_ML_HP_gcam/by2021/ens_bc_combined_20260216_113450"
-procdata_subdir_RefMLHPgcam_price <- 
-  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLprice_20260218_123119"
-procdata_subdir_RefMLHPgcam_income <- 
-  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLincome_20260218_123338"
-procdata_subdir_RefMLHPgcam_scale <- 
-  "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLscale_20260218_123621"
+procdata_subdir_RefMLgcam_orig <- "Ref_ML_gcam/by2021/ens_bc_combined_20260216_030130"
+procdata_subdir_RefMLgcam_new <- "Ref_ML_gcam/by2021/ens_bc_20261008_010903"
+# procdata_subdir_RefMLgcam_price <- 
+#   "Ref_ML_gcam/by2021/ens_bc_combined_MLprice_20260218_121355"
+# procdata_subdir_RefMLgcam_income <- 
+#   "Ref_ML_gcam/by2021/ens_bc_combined_MLincome_20260218_122105"
+# procdata_subdir_RefMLgcam_scale <- 
+#   "Ref_ML_gcam/by2021/ens_bc_combined_MLscale_20260218_122355"
+procdata_subdir_RefMLHPgcam_orig <- "Ref_ML_HP_gcam/by2021/ens_bc_combined_20260216_113450"
+# procdata_subdir_RefMLHPgcam_price <- 
+#   "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLprice_20260218_123119"
+# procdata_subdir_RefMLHPgcam_income <- 
+#   "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLincome_20260218_123338"
+# procdata_subdir_RefMLHPgcam_scale <- 
+#   "Ref_ML_HP_gcam/by2021/ens_bc_combined_MLscale_20260218_123621"
 
 # sub-subdirectories for specific types of results
 demand_abs_subdir <- "abs"
@@ -76,7 +77,8 @@ lapply(directories_to_check, function(dir_path) {
 # Paths to ambrosia ------------------------------------------------------------
 
 # paths to ambrosia source on different machines
-ambrosia_path_windows <- "H:/My Drive/R projects/food_demand/ambrosia"
+#ambrosia_path_windows <- "H:/My Drive/R projects/food_demand/ambrosia"
+ambrosia_path_windows <- "C:/Users/bcone/repos/ambrosia"
 ambrosia_path_pic     <- "/qfs/people/onei736/food_demand/ambrosia"
 
 # Parameters for data cleaning -------------------------------------------------
@@ -123,9 +125,9 @@ lo_max <- 5
 # scenarios to run in 03_calculate_demand.R
 scen_list_demand_GCAM_ML <- 
   # list("Ref_ML_gcam_MLparams_bc")
-  # list("Ref_ML_gcam_ens_bc")
+  list("Ref_ML_gcam_ens_bc")
   # list("Ref_ML_HP_gcam_ens_bc")
   # list("Ref_ML_gcam_ens_bc", "Ref_ML_HP_gcam_ens_bc")
   # list("Ref_ML_gcam_MLparams_bc", "Ref_ML_gcam_ens_bc")
-  list("Ref_ML_gcam_MLprice_ens_bc", "Ref_ML_gcam_MLincome_ens_bc", "Ref_ML_gcam_MLscale_ens_bc")
+  # list("Ref_ML_gcam_MLprice_ens_bc", "Ref_ML_gcam_MLincome_ens_bc", "Ref_ML_gcam_MLscale_ens_bc")
   # list("Ref_ML_HP_gcam_MLprice_ens_bc", "Ref_ML_HP_gcam_MLincome_ens_bc", "Ref_ML_HP_gcam_MLscale_ens_bc")
