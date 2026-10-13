@@ -19,7 +19,13 @@ source("R/init_packages.R")
 # install or load packages as needed
 ensure_package(tidyverse)
 ensure_package(progressr)
-install_ambrosia_once(force_install = FALSE)
+# Load ambrosia from the verified Windows source directory.
+if (!install_ambrosia_once(
+  path = ambrosia_path_windows,
+  force_install = FALSE
+)) {
+  stop("Ambrosia failed to load.")
+}
 
 # define regions to run over
 # get command line arguments
