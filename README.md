@@ -27,6 +27,11 @@ R/                                # Helper functions
 output/
   └── figures/<run_name>/<scen>/  # Generated individual tables and plots
   └── reports/                    # Generated pdfs of multiple plots
+
+MCMC_code/
+  └── MCMC_code_runner  # Code to regenrate MCMC samples
+  └── Processed_group_data.csv                    # Input data for MCMC  
+  
 ```
 
 ## Key Features
@@ -78,20 +83,12 @@ output/
 | `parameters_for_intervals_functions.R` | Defines helper functions for sampling and plotting. |
 | `main_script.R` | Orchestrates data input, summary, and plot generation. |
 
-## To Do / Fill In Later
+## Additional code to execute MCMC
 
--   [ ] **Model Description**: Overview of the demand model and its structure.
--   [ ] **Parameter Estimation**: Description of how the MCMC estimation is performed.
--   [ ] **Assumptions**: Assumptions underlying the scenarios and parameter sets.
--   [ ] **Data Sources**: Description and citations for input data sources.
--   [ ] **Uncertainty Interpretation**: Guidance on how to interpret the ensemble results.
--   [ ] **Validation**: Any model validation steps conducted.
--   [ ] **Future Work**: Planned extensions or applications.
-
-## License
-
-*TBD*
+Under the `MCMC_code/` users can execute the codefile `MCMC_code_runner.R` that will recreate the posterior distributions of the parameters used in this study.
+The file `Processed_group_data.csv` provides the observed data to start the max likelihood estimation required by the MCMC process. 
+The users are expected to have the latest `ambrosia` package loaded when running the script.
 
 ## Contact
 
-For questions about this project, contact [Your Name or Institution].
+For questions about this project, contact kanishka.narayan@pnnl.gov.
