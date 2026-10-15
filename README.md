@@ -4,11 +4,11 @@
 
 This repository contains code used to analyze uncertainty in projections of food demand using:
 
-- the *ambrosia* food demand package
+-   the *ambrosia* food demand package
 
-- income and price assumptions from GCAM scenario output
+-   income and price assumptions from GCAM scenario output
 
-- an ensemble of food demand parameters from a Markov Chain Monte Carlo (MCMC) estimation based on historical observations of food demand, income, and prices.
+-   an ensemble of food demand parameters from a Markov Chain Monte Carlo (MCMC) estimation based on historical observations of food demand, income, and prices.
 
 The primary outputs are an ensemble of future staples, non-staples, and total food demand projections across 32 GCAM regions and 10 income groups per region. These ensembles are used to characterize food demand uncertainty and to identify a small number of parameter sets that represent that uncertainty that can be used in GCAM for scenario analysis.
 
@@ -30,6 +30,10 @@ scripts/
 output/
   reports/        PDF reports containing sets of figures
   tables/         Summary tables and metrics
+  
+MCMC_code/
+  MCMC_code_runner.R            Code to regenrate MCMC samples
+  Processed_group_data.csv      Input data for MCMC  
 ```
 
 Directory names and file locations are defined centrally in `R/common_definitions.R`.
@@ -41,7 +45,7 @@ Directory names and file locations are defined centrally in `R/common_definition
 The analysis expects the following input files in `data/raw/` and its subdirectories.
 
 | File | Location | Purpose |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | `ambrosia_9_params_23Nov2025.dat` | `data/raw/mcmc_params/` | Global parameter ensemble from MCMC estimation |
 | `FE_params_23Nov25.dat` | `data/raw/mcmc_params/` | Regional fixed-effect parameter ensemble from MCMC estimation |
 | `Processed_group_data_13Jan25.csv` | `data/raw/obs_data/` | Historical observations of food demand, income, and prices used for estimation and validation |
@@ -79,6 +83,20 @@ Processes GCAM outputs from scenarios based on the identified parameter sets. Th
 
 Compares GCAM model predictions against historical observations and produces fit metrics and diagnostic plots.
 
+### *optional diagnostic scripts*
+
+### 08_diagnose_staples_floor_sensitivity.R
+
+Identify frequency of observations or projected results that trigger minimum demand thresholds.
+
+### [09-11]\_diagnose\_[gcam vs ambrosia price response].R
+
+Identify regions responsible for negative gcam-ambrosia correlations in demand response to prices, and trace causes.
+
+### 12_calculate_global_demand_uncertainty.R
+
+Aggregate demand ensembles across regions to calculate uncertainty in global demand.
+
 ------------------------------------------------------------------------
 
 ## Supporting Scripts
@@ -99,6 +117,10 @@ Produces the primary figures used in reporting results and in the manuscript.
 
 Creates a .csv version of a summary tables describing parameter iterations most frequently associated with extreme outcomes, for use in the manuscript.
 
+## Additional code to execute MCMC
+
+Under the `MCMC_code/` users can execute the code file `MCMC_code_runner.R` that will recreate the posterior distributions of the parameters used in this study. The file `Processed_group_data.csv` provides the observed data to start the max likelihood estimation required by the MCMC process. The users are expected to have the latest `ambrosia` package loaded when running the script.
+
 ------------------------------------------------------------------------
 
 ## Main Scenario Types
@@ -113,10 +135,10 @@ Creates a .csv version of a summary tables describing parameter iterations most 
 
 Combined scenarios include:
 
-- HD-HPR
-- HD-LPR
-- LD-HPR
-- LD-LPR
+-   HD-HPR
+-   HD-LPR
+-   LD-HPR
+-   LD-LPR
 
 ------------------------------------------------------------------------
 
@@ -124,15 +146,15 @@ Combined scenarios include:
 
 Key dependencies include:
 
-- R
-- tidyverse
-- ggplot2
-- patchwork
-- ggforce
-- ggh4x
-- progressr
-- rgcam
-- ambrosia
+-   R
+-   tidyverse
+-   ggplot2
+-   patchwork
+-   ggforce
+-   ggh4x
+-   progressr
+-   rgcam
+-   ambrosia
 
 ------------------------------------------------------------------------
 
@@ -148,8 +170,8 @@ Typical workflow:
 6.  Run `05_param_scenario_discovery.R` to identify parameter sets that best represent high/low demand and/or high/low price response
 7.  Run `06_process_gcam_results.R` for GCAM results employing the identified parameter sets
 8.  Run:
-    - `07_model_vs_obs.R` to calculate and plot comparison of model predictions versus observations
-    - `plot_parameter_uncertainty.R` , `plot_stylized_demand.R` , and `plot_main_results.R` to visualize outcomes
+    -   `07_model_vs_obs.R` to calculate and plot comparison of model predictions versus observations
+    -   `plot_parameter_uncertainty.R` , `plot_stylized_demand.R` , and `plot_main_results.R` to visualize outcomes
 
 Depending on configuration settings in `common_definitions.R`, scripts may be run for selected regions or all 32 GCAM regions.
 
