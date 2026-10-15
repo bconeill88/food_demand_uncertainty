@@ -32,7 +32,7 @@ output/
   tables/         Summary tables and metrics
   
 MCMC_code/
-  MCMC_code_runner.R            Code to regenrate MCMC samples
+  MCMC_code_runner.R            Code to regenerate MCMC samples
   Processed_group_data.csv      Input data for MCMC  
 ```
 
